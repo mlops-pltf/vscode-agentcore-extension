@@ -1,0 +1,68 @@
+{
+  "name": "agentcore-chat",
+  "displayName": "agentcore-chat",
+  "description": "Direct chat with AWS AgentCore agents",
+  "publisher": "internal-tools",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.146.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentcore-sidebar",
+          "title": "AgentCore Chat",
+          "icon": "media/robot.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentcore-sidebar": [
+        {
+          "type": "webview",
+          "id": "agentcoreChatView",
+          "name": "AgentCore Agents",
+          "icon": "media/robot.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AgentCore Chat",
+      "properties": {
+        "agentcore.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python interpreter with boto3 installed"
+        },
+        "agentcore.registryId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional AWS Agent Registry ID"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.146.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "eslint": "^10.5.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}

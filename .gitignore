@@ -1,0 +1,9 @@
+node_modules
+.vscode-test/
+*.vsix
+.env
+.venv/
+node_modules/
+*.vsix
+__pycache__/
+.DS_Store
