@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": "r1", "result": {"role": "agent", "messageId": "m1", "contextId": "ctx-old", "parts": [{"type": "text", "text": "Legacy hello."}]}}

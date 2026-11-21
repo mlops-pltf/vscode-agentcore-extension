@@ -56,6 +56,21 @@ class BridgeSmokeTest(unittest.TestCase):
         self.assertEqual(s[-1]["type"], "done")
         self.assertEqual(s[-1]["meta"]["state"], "cancelled")
 
+    def test_a2a_conversation_keeps_context_until_reset(self):
+        sid = "a" * 36
+
+        def a2a(request_id, prompt):
+            return dict(invoke(request_id, prompt), protocol="A2A", sessionId=sid)
+
+        events = self.run_bridge([a2a("T1", "hi")], [a2a("T2", "again")],
+                                 [{"action": "reset_session", "sessionId": sid}, a2a("T3", "fresh")], pause=0.5)
+        done = {rid: self.for_request(events, rid)[-1] for rid in ("T1", "T2", "T3")}
+        self.assertTrue(all(d["type"] == "done" and d["meta"]["protocol"] == "A2A" for d in done.values()), done)
+        self.assertEqual(done["T1"]["meta"]["contextId"], done["T2"]["meta"]["contextId"])
+        self.assertNotEqual(done["T2"]["meta"]["contextId"], done["T3"]["meta"]["contextId"])
+        text = "".join(e["text"] for e in self.for_request(events, "T1") if e["type"] == "chunk")
+        self.assertEqual(text, "You said: 'hi'. This is a mock reply from demo, streamed word by word.")
+
     def test_reset_session_is_accepted(self):
         events = self.run_bridge([{"action": "reset_session", "sessionId": "s" * 36}])
         self.assertEqual(events, [])

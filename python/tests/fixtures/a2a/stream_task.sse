@@ -1,0 +1,12 @@
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "task", "id": "task-9", "contextId": "ctx-9", "status": {"state": "submitted"}}}
+
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "status-update", "taskId": "task-9", "contextId": "ctx-9", "status": {"state": "working", "message": {"kind": "message", "role": "agent", "messageId": "s1", "parts": [{"kind": "text", "text": "Thinking..."}]}}, "final": false}}
+
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "artifact-update", "taskId": "task-9", "contextId": "ctx-9", "artifact": {"artifactId": "a1", "parts": [{"kind": "text", "text": "Hello "}]}, "append": false, "lastChunk": false}}
+
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "artifact-update", "taskId": "task-9", "contextId": "ctx-9", "artifact": {"artifactId": "a1", "parts": [{"kind": "text", "text": "world!"}]}, "append": true, "lastChunk": true}}
+
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "status-update", "taskId": "task-9", "contextId": "ctx-9", "status": {"state": "completed"}, "final": true}}
+
+data: {"jsonrpc": "2.0", "id": "r1", "result": {"kind": "task", "id": "task-9", "contextId": "ctx-9", "status": {"state": "completed"}, "artifacts": [{"artifactId": "a1", "parts": [{"kind": "text", "text": "Hello world!"}]}]}}
+
