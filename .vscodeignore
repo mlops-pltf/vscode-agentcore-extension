@@ -16,3 +16,6 @@ python/tools/**
 **/__pycache__/**
 **/*.pyc
 samples/**
+.github/**
+scripts/**
+RELEASING.md

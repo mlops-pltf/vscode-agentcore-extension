@@ -1,14 +1,20 @@
 {
   "name": "agentcore-chat",
-  "displayName": "agentcore-chat",
-  "description": "Direct chat with AWS AgentCore agents",
+  "displayName": "AgentCore Chat",
+  "description": "Chat with your Amazon Bedrock AgentCore agents (HTTP and A2A) from VS Code",
   "publisher": "internal-tools",
-  "version": "0.0.1",
+  "version": "0.9.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mlops-pltf/vscode-agentcore-extension.git"
+  },
+  "license": "MIT",
   "engines": {
-    "vscode": "^1.147.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat"
   ],
   "activationEvents": [],
   "main": "./extension.js",
@@ -67,7 +73,11 @@
         },
         "agentcore.jsonReplies": {
           "type": "string",
-          "enum": ["full", "text", "raw"],
+          "enum": [
+            "full",
+            "text",
+            "raw"
+          ],
           "enumDescriptions": [
             "The main text, then every other field as readable Markdown (lists, tables)",
             "Only the main text (message, result, response...)",
@@ -78,7 +88,9 @@
         },
         "agentcore.jsonHiddenFields": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "markdownDescription": "Field names to leave out when showing JSON replies as Markdown (any level, case-insensitive), in addition to the built-in ones (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency)."
         },
@@ -118,7 +130,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
-    "@types/vscode": "^1.146.0",
+    "@types/vscode": "~1.109.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "eslint": "^10.5.0",
@@ -128,5 +140,13 @@
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
-  }
+  },
+  "keywords": [
+    "aws",
+    "bedrock",
+    "agentcore",
+    "agents",
+    "a2a",
+    "chat"
+  ]
 }

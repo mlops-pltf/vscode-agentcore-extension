@@ -16,13 +16,13 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 
 ## Requirements
 
-- VS Code **1.147** or later.
+- VS Code **1.109** or later.
 - **Python 3.9+** on your PATH. On first start the extension creates its own virtual environment and installs `boto3` into it (a few seconds, once).
 - An **AWS profile** in `~/.aws/config`, normally AWS IAM Identity Center (SSO), with the permissions below.
 
 ## Getting started
 
-1. Install the extension (`Extensions` view → `...` → **Install from VSIX...**).
+1. Download `agentcore-chat-X.Y.Z.vsix` from the repository's **Releases** page and install it (`Extensions` view → `...` → **Install from VSIX...**).
 2. Open the chat: click **AgentCore Chat** in the Secondary Side Bar on the right, or run **AgentCore: Open Chat** from the Command Palette.
 3. Pick your **AWS profile** at the top. If your SSO session has expired, click **Run aws sso login** in the banner.
 4. Pick an **agent**: click the agent name under the message box and type part of its name or description to search (↑/↓ and Enter work too). Type your question and press **Enter** (**Shift+Enter** for a new line).
@@ -157,10 +157,14 @@ See [python/tests/README.md](python/tests/README.md) for details, and `python/to
 2. In **AgentCore: Show Logs**, copy the `[raw ...]` lines of that reply into a new file in `python/tests/fixtures/http/` or `.../a2a/` (`.sse` for streams, `.json` for single bodies).
 3. Add a test that runs it through the protocol (see `test_protocol_http.py` / `test_protocol_a2a.py`).
 
-### Packaging
+### Packaging and releases
 
 ```
-npx @vscode/vsce package
+npx @vscode/vsce@3 package
 ```
 
-Tests, fixtures, tools, samples and the docs folder are left out of the `.vsix` (see `.vscodeignore`).
+Tests, fixtures, tools, samples and the docs folder are left out of the `.vsix` (see `.vscodeignore`). Releases are built by GitHub Actions from a version tag: see [RELEASING.md](RELEASING.md). Every pull request runs the CI workflow (lint, all tests, packaging check).
+
+## License
+
+[MIT](LICENSE)

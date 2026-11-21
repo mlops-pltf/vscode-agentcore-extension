@@ -1,0 +1,69 @@
+# Lint, all tests and a packaging check, on pull requests and pushes to main.
+# Also run by release.yml before a release is built.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest Python boto3 still supports, and a current one
+        python: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Python backend venv (.venv, as the tests expect)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r python/requirements.txt
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:py
+      - run: npm run test:js
+
+  sample-agent:
+    name: Sample agent tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Sample agent venv
+        run: |
+          python -m venv samples/http-agent/.venv
+          samples/http-agent/.venv/bin/pip install -r samples/http-agent/requirements.txt
+      - run: npm run test:sample
+
+  package:
+    name: Package check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx --yes @vscode/vsce@3 package --out agentcore-chat.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentcore-chat-vsix
+          path: agentcore-chat.vsix

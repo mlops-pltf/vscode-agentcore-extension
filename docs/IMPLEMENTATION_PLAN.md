@@ -354,6 +354,21 @@ User request: show the entire JSON reply converted to Markdown, not only its mes
 
 *Done 2026-11-21 (tests and mock); rules still to tune with real replies from the office.* Also fixed: ESLint now ignores every `.venv` (the sample agent's venv came in with Phase 9). *Done when:* with the mock, `structured` shows all fields readably in `full`, only the message in `text`, a JSON block in `raw`, and "Open raw JSON" opens the original; at the office, real agents' JSON replies read well (send examples to tune the rules).
 
+### Phase 11: Releases (added 2026-11-21)
+
+*Decided (2026-11-21):* no release per phase. **0.9.0 now** as an internal beta (everything up to Phase 10, for the office test and a few colleagues), **1.0.0** for customers once the office checklists pass, then a minor version per future phase (1.1.0, ...) and patch versions for fixes. Releases are made from `main` and published as GitHub Releases with the `.vsix` attached.
+
+- [x] **T11.1** Package metadata: version `0.9.0`, display name "AgentCore Chat", description, categories AI/Chat, keywords, `repository`, `license` (**MIT, copyright Saumalya Sarkar**, chosen 2026-11-21), `LICENSE` file, `.vscodeignore` for `.github/**`. `vsce package` runs without warnings or prompts (it stops on a missing LICENSE or repository in CI).
+- [x] **T11.2** CHANGELOG: `[Unreleased]` becomes `[0.9.0] - beta`, with an empty `[Unreleased]` above it.
+- [x] **T11.3** CI (`.github/workflows/ci.yml`): on pull requests and pushes to `main`: lint, Python tests on 3.10 (oldest boto3 supports) and 3.13, JS tests, sample agent tests, and a `vsce package` check.
+- [x] **T11.4** Release (`.github/workflows/release.yml`): on a `v*` tag, run CI, check the tag matches `package.json`, package the `.vsix`, and create a GitHub Release with that version's CHANGELOG section as notes (0.x versions marked as pre-release).
+- [x] **T11.5** `RELEASING.md`: the steps (changelog, version, merge, tag) and how to install from a release.
+- [x] **T11.8** *(2026-11-21, user request)* Minimum VS Code lowered from 1.147 to **1.109** (`engines.vscode ^1.109.0`, `@types/vscode ~1.109.0` so `vsce` accepts it). No API we use is newer than 1.109. Unverified: whether 1.109 supports `viewsContainers.secondarySidebar`; if not, VS Code puts the chat view in the Explorer instead (still works; drag it anywhere). Check on the office laptop.
+- [ ] **T11.6** Merge everything into `main` (one pull request from `phase-11-release`; the user opens and merges it) and tag `v0.9.0`.
+- [ ] **T11.7** *(later)* 1.0.0 after the office checklists (round 6e, T7.3, Phase 8-10 office checks) pass.
+
+*Done when:* pushing `v0.9.0` produces a GitHub Release with an installable `.vsix`.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

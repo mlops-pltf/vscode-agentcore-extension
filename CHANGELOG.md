@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-21
+
+First beta, for internal testing against real AgentCore agents before 1.0.0.
+
 ### Added
 
 - **A2A agents** next to HTTP agents: JSON-RPC `message/send` and `message/stream`, tasks and artifacts, follow-up questions (input-required), and conversations that keep their context.
@@ -32,7 +36,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - The chat lives in the Secondary Side Bar (right), next to other chat views, with a redesigned panel that follows the VS Code theme and works in narrow side bars.
 - The Python backend restarts itself after a crash (up to three times a minute), keeps working when a request fails, and reinstalls its dependencies when `requirements.txt` changes.
-- Requires VS Code 1.147 or later.
+- Requires VS Code 1.109 or later.
 
 ### Security
 
