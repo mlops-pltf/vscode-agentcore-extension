@@ -7,10 +7,11 @@ Reply:    SSE events or one JSON body (assumption A2), read by response.py.
 import json
 from typing import List, Optional
 
+from agentcore.errors import AgentCoreError
 from agentcore.events import Emitter
 from agentcore.protocols.base import AgentProtocol, InvokeContext
 from agentcore.response import AgentResponse
-from agentcore.text_extract import DATA, FINAL, RAW_EVENT, TOOL, extract_text
+from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, TOOL, extract_text
 
 HTTP_PROMPT_KEY = "prompt"
 
@@ -30,6 +31,9 @@ class HttpProtocol(AgentProtocol):
         for event in response.events():
             text, kind = extract_text(event.value)
 
+            if kind == ERROR:
+                # Text already shown stays; the reply ends with this error (and Retry)
+                raise AgentCoreError(f"Agent error: {text}")
             if event.whole_body:
                 if text:
                     emitter.chunk(text)

@@ -1,6 +1,6 @@
 import unittest
 
-from agentcore.text_extract import DATA, FINAL, RAW_EVENT, TOOL, extract_text
+from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, TOOL, extract_text
 
 
 class ExtractTextTest(unittest.TestCase):
@@ -58,3 +58,15 @@ class ExtractTextTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErrorEventTest(unittest.TestCase):
+    def test_bedrock_agentcore_app_stream_error(self):
+        event = {"error": "model throttled", "error_type": "ThrottlingException",
+                 "message": "An error occurred during streaming"}
+        self.assertEqual(extract_text(event), ("ThrottlingException: model throttled", ERROR))
+
+    def test_other_error_shapes(self):
+        self.assertEqual(extract_text({"error": "bad input"}), ("bad input", ERROR))
+        self.assertEqual(extract_text({"error": {"message": "nope", "code": 7}}), ("nope", ERROR))
+        self.assertEqual(extract_text({"error": None, "text": "fine"}), ("fine", DATA), "an empty error is not an error")

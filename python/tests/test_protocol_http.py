@@ -63,6 +63,13 @@ class JsonFixturesTest(unittest.TestCase):
     def test_generic_response_key(self):
         self.assertEqual(run(fixture_response("http/generic_response.json"))[0].text, "Hello world!")
 
+    def test_stream_error_event_ends_the_reply_with_an_error(self):
+        emitter = RecordingEmitter()
+        with self.assertRaises(AgentCoreError) as raised:
+            handle(HTTP, fixture_response("http/stream_error.sse"), emitter)
+        self.assertEqual(str(raised.exception), "Agent error: ThrottlingException: model throttled")
+        self.assertEqual(emitter.text, "Looking that up now...", "text before the error is kept")
+
     def test_unknown_shape_is_shown_as_json_block(self):
         text = run(fixture_response("http/unknown_shape.json"))[0].text
         self.assertTrue(text.startswith("```json\n") and text.endswith("\n```"), text)

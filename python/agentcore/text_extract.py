@@ -11,11 +11,13 @@ extract_text() returns (text, kind). The kind tells the caller how to use it:
   "final"      the complete answer sent at the end: only use it if nothing
                was streamed, otherwise the whole reply would repeat (A4)
   "tool"       the name of a tool the agent is calling
+  "error"      the agent failed; the text says why
   None         not reply text (lifecycle events etc.)
 """
+import json
 from typing import Any, Optional, Tuple
 
-DATA, RAW_EVENT, FINAL, TOOL = "data", "raw_event", "final", "tool"
+DATA, RAW_EVENT, FINAL, TOOL, ERROR = "data", "raw_event", "final", "tool", "error"
 
 Result = Tuple[Optional[str], Optional[str]]
 
@@ -32,6 +34,15 @@ def extract_text(obj: Any) -> Result:
     # Strands: {"data": "<token>", "delta": {...}, ...}
     if isinstance(obj.get("data"), str):
         return obj["data"], DATA
+
+    # BedrockAgentCoreApp turns an exception in the entrypoint into
+    # {"error": "<str(e)>", "error_type": "ValueError", "message": "An error occurred during streaming"}
+    error = obj.get("error")
+    if isinstance(error, dict):
+        error = error.get("message") or json.dumps(error)
+    if isinstance(error, str) and error:
+        kind_of_error = obj.get("error_type")
+        return (f"{kind_of_error}: {error}" if isinstance(kind_of_error, str) and kind_of_error else error), ERROR
 
     # Raw Bedrock ConverseStream event: {"event": {"contentBlockDelta": {"delta": {"text": ...}}}}
     if isinstance(obj.get("event"), dict):
