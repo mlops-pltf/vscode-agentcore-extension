@@ -10,15 +10,20 @@ import time
 import uuid
 from typing import Dict, Optional, Tuple
 
-import boto3
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
+from agentcore import aws, mock_runtime
 from agentcore.cancel import CancelToken
 from agentcore.events import Emitter, send
 
 
+def _backend(settings: dict):
+    # Only call AWS when the extension explicitly turns mock off
+    return mock_runtime if settings.get("mock", True) else aws
+
+
 def list_profiles(cmd: dict):
-    send({"type": "profiles", "data": boto3.Session().available_profiles})
+    send({"type": "profiles", "data": _backend(cmd.get("settings") or {}).list_profiles()})
 
 
 def list_agents(cmd: dict):
@@ -80,14 +85,40 @@ def cancel(cmd: dict):
 
 
 def _run_invoke(cmd: dict, request_id: str, token: CancelToken):
-    emitter = Emitter(request_id)
+    settings = cmd.get("settings") or {}
+    emitter = Emitter(request_id, debug_raw=settings.get("debugRaw", False))
+    backend = _backend(settings)
+    started = time.monotonic()
     try:
-        for text in ('Fisrt chunk...\n', 'Second chunk...\n', 'Last chunk...\n'):
+        profile = cmd["profile"]
+        session_id = cmd.get("sessionId") or str(uuid.uuid4())
+        user_id = backend.get_runtime_user_id(profile)
+
+        # Interim (Phase 1): HTTP-style payload and line passthrough.
+        # Phases 2 and 3 replace this with the HTTP and A2A protocol handlers.
+        payload = json.dumps({"prompt": cmd["prompt"]}).encode("utf-8")
+        response = backend.invoke(profile, cmd["agentArn"], session_id, payload,
+                                  "application/json, text/event-stream", user_id)
+        body = response["response"]
+        token.attach(body)
+        for line in body.iter_lines():
             if token.cancelled:
                 break
-            emitter.chunk(text)
-            time.sleep(0.3)
-        emitter.done(state="cancelled" if token.cancelled else "completed")
+            if not line:
+                continue
+            text = line.decode("utf-8", errors="replace")
+            emitter.raw(text)
+            if text.startswith("data: "):
+                text = text[6:]
+            emitter.chunk(text + "\n")
+
+        emitter.done(state="cancelled" if token.cancelled else "completed",
+                     contentType=response.get("contentType"),
+                     ms=int((time.monotonic() - started) * 1000))
+    except aws.SsoExpired as e:
+        emitter.sso_expired(e.profile)
+    except aws.AgentCoreError as e:
+        emitter.error(str(e))
     except Exception as e:
         if token.cancelled:
             emitter.done(state="cancelled")
