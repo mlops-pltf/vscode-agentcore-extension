@@ -23,16 +23,17 @@ _SSO_ERRORS = (SSOError, SSOTokenLoadError, TokenRetrievalError, UnauthorizedSSO
 
 
 # boto3 clients are thread-safe, but creating them is not, so cache under a lock
-_clients: Dict[Tuple[str, str], object] = {}
+_clients: Dict[Tuple[str, str, Optional[str]], object] = {}
 _clients_lock = threading.Lock()
 _user_ids: Dict[str, str] = {}
 
 
-def _client(profile: str, service: str):
-    key = (profile, service)
+def _client(profile: str, service: str, region: Optional[str] = None):
+    """region overrides the profile's region (agentcore.region setting)."""
+    key = (profile, service, region or None)
     with _clients_lock:
         if key not in _clients:
-            _clients[key] = boto3.Session(profile_name=profile).client(service)
+            _clients[key] = boto3.Session(profile_name=profile, region_name=region or None).client(service)
         return _clients[key]
 
 
@@ -40,7 +41,7 @@ def list_profiles():
     return boto3.Session().available_profiles
 
 
-def list_agents(profile: str) -> List[dict]:
+def list_agents(profile: str, region: Optional[str] = None) -> List[dict]:
     """READY agent runtimes in the profile's account/region, with their protocol.
 
     list_agent_runtimes has no protocol, so each runtime is looked up with
@@ -48,7 +49,7 @@ def list_agents(profile: str) -> List[dict]:
     and the user picks it with the toggle.
     """
     try:
-        control = _client(profile, "bedrock-agentcore-control")
+        control = _client(profile, "bedrock-agentcore-control", region)
         runtimes = [r for page in control.get_paginator("list_agent_runtimes").paginate()
                     for r in page.get("agentRuntimes", []) if r.get("status") == "READY"]
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -56,7 +57,8 @@ def list_agents(profile: str) -> List[dict]:
     except _SSO_ERRORS:
         raise SsoExpired(profile)
     except NoRegionError:
-        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config.")
+        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config "
+                             "or set agentcore.region.")
     except ClientError as e:
         err = e.response.get("Error", {})
         raise AgentCoreError(f"Could not list agents: {err.get('Code', '')}: {err.get('Message', str(e))}")
@@ -93,7 +95,7 @@ def get_runtime_user_id(profile: str) -> str:
 
 
 def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
-           accept: str, user_id: Optional[str] = None) -> dict:
+           accept: str, user_id: Optional[str] = None, region: Optional[str] = None) -> dict:
     """Call InvokeAgentRuntime and return the raw boto3 response.
 
     The caller reads response["response"] (a streaming body) itself.
@@ -108,9 +110,12 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
     if user_id:
         kwargs["runtimeUserId"] = user_id
     try:
-        return _client(profile, "bedrock-agentcore").invoke_agent_runtime(**kwargs)
+        return _client(profile, "bedrock-agentcore", region).invoke_agent_runtime(**kwargs)
     except _SSO_ERRORS:
         raise SsoExpired(profile)
+    except NoRegionError:
+        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config "
+                             "or set agentcore.region.")
     except ClientError as e:
         err = e.response.get("Error", {})
         code, message = err.get("Code", ""), err.get("Message", str(e))

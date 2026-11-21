@@ -65,7 +65,8 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
 
         user_id = backend.get_runtime_user_id(profile)
         raw = backend.invoke(profile, cmd["agentArn"], session_id,
-                             protocol.build_payload(ctx), protocol.accept, user_id)
+                             protocol.build_payload(ctx), protocol.accept, user_id,
+                             region=settings.get("region") or None)
         meta = protocol.handle(AgentResponse(raw, emitter, token), emitter, ctx)
         # These keys belong to the request as a whole; a protocol's meta can't override them
         emitter.done(**{**meta,

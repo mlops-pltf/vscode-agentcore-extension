@@ -47,11 +47,13 @@ class CacheTest(unittest.TestCase):
         agents.list_for("dev", {}, refresh=True)
         self.assertEqual(self.backend.list_agents.call_count, 2)
 
-    def test_cache_is_per_profile_and_mock_mode(self):
+    def test_cache_is_per_profile_mock_mode_and_region(self):
         agents.list_for("dev", {})
         agents.list_for("prod", {})
         agents.list_for("dev", {"mock": False})
-        self.assertEqual(self.backend.list_agents.call_count, 3)
+        agents.list_for("dev", {"region": "eu-west-1"})
+        self.assertEqual(self.backend.list_agents.call_count, 4)
+        self.assertEqual(self.backend.list_agents.call_args.kwargs, {"region": "eu-west-1"})
 
     def test_cache_expires(self):
         with mock.patch.object(agents.time, "monotonic", return_value=1000.0):
@@ -59,6 +61,18 @@ class CacheTest(unittest.TestCase):
         with mock.patch.object(agents.time, "monotonic", return_value=1000.0 + agents.CACHE_SECONDS + 1):
             agents.list_for("dev", {})
         self.assertEqual(self.backend.list_agents.call_count, 2)
+
+
+class RegionTest(unittest.TestCase):
+    def test_region_setting_overrides_profile_and_is_cached_separately(self):
+        with mock.patch.object(aws.boto3, "Session") as session:
+            aws._client("rp", "sts")
+            aws._client("rp", "sts", "eu-west-1")
+            aws._client("rp", "sts", "eu-west-1")
+        self.addCleanup(lambda: [aws._clients.pop(k) for k in list(aws._clients) if k[0] == "rp"])
+        self.assertEqual([c.kwargs for c in session.call_args_list],
+                         [{"profile_name": "rp", "region_name": None},
+                          {"profile_name": "rp", "region_name": "eu-west-1"}])
 
 
 class SequentialExecutor:
@@ -82,8 +96,8 @@ class AwsListAgentsTest(unittest.TestCase):
         self.client = boto3.client("bedrock-agentcore-control", region_name="us-east-1",
                                    aws_access_key_id="x", aws_secret_access_key="y")
         self.stub = Stubber(self.client)
-        aws._clients[("p", "bedrock-agentcore-control")] = self.client
-        self.addCleanup(aws._clients.pop, ("p", "bedrock-agentcore-control"), None)
+        aws._clients[("p", "bedrock-agentcore-control", None)] = self.client
+        self.addCleanup(aws._clients.pop, ("p", "bedrock-agentcore-control", None), None)
         patcher = mock.patch.object(aws, "ThreadPoolExecutor", SequentialExecutor)
         patcher.start()
         self.addCleanup(patcher.stop)

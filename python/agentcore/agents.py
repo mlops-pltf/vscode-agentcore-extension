@@ -5,26 +5,27 @@ few minutes; the refresh button bypasses the cache.
 """
 import threading
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from agentcore.backends import backend_for, is_mock
 
 CHAT_PROTOCOLS = ("HTTP", "A2A")
 CACHE_SECONDS = 5 * 60
 
-_cache: Dict[Tuple[bool, str], Tuple[float, dict]] = {}
+_cache: Dict[Tuple[bool, str, Optional[str]], Tuple[float, dict]] = {}
 _lock = threading.Lock()
 
 
 def list_for(profile: str, settings: dict, refresh: bool = False) -> dict:
     """Return {"data": [agents], "note": str or None} for the agents event."""
-    key = (is_mock(settings), profile)
+    region = settings.get("region") or None
+    key = (is_mock(settings), profile, region)
     with _lock:
         cached = _cache.get(key)
     if cached and not refresh and time.monotonic() - cached[0] < CACHE_SECONDS:
         return cached[1]
 
-    result = _chat_agents(backend_for(settings).list_agents(profile))
+    result = _chat_agents(backend_for(settings).list_agents(profile, region=region))
     with _lock:
         _cache[key] = (time.monotonic(), result)
     return result

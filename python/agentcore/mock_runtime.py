@@ -55,7 +55,7 @@ def list_profiles():
 _MOCK_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/"
 
 
-def list_agents(profile: str) -> List[dict]:
+def list_agents(profile: str, region: Optional[str] = None) -> List[dict]:
     return [
         {"name": "demo-http-strands", "arn": _MOCK_ARN + "demo_http_strands-Ab12Cd34Ef",
          "description": "Mock Strands agent over HTTP (SSE streaming)", "protocol": "HTTP"},
@@ -73,7 +73,7 @@ def get_runtime_user_id(profile: str) -> str:
 
 
 def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
-           accept: str, user_id: Optional[str] = None) -> dict:
+           accept: str, user_id: Optional[str] = None, region: Optional[str] = None) -> dict:
     request = json.loads(payload)
     is_a2a = request.get("jsonrpc") == "2.0"
     prompt = _a2a_prompt(request) if is_a2a else request.get("prompt", "")
