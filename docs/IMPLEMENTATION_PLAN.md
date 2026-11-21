@@ -58,7 +58,8 @@ agents        {data: [{name, arn, description, protocol: "HTTP"|"A2A"|null}]}
 sso_expired   {profile, requestId?}
 chunk         {requestId, text}                 # append to the bubble
 status        {requestId, text}                 # small grey line: "working…", "tool: search"
-done          {requestId, meta: {protocol, mock, contentType, contextId?, taskId?, state?, ms}}
+done          {requestId, meta: {state, protocol, mock, contentType, ms, contextId?, taskId?, taskState?}}
+                                # state = completed|cancelled (the request); taskState = the A2A task's state
 error         {requestId?, message}
 raw           {requestId, line}                 # extension sends this to the Output channel only
 bridge        {state: "ready"|"restarting"|"down"}
@@ -173,17 +174,18 @@ python/
 
 ### Phase 3: A2A protocol handler
 
-- [ ] **T3.1** `protocols/a2a.py`: `A2aProtocol(AgentProtocol)`, registered in `protocols/__init__.py`. Conversation state (`contextId`, `pendingTaskId`) lives in `ctx.session_state` (R4) and is cleared by `reset_session`.
-- [ ] **T3.2** `build_payload(ctx)` (streaming from `ctx.settings["a2aStreaming"]`, rpc id = `ctx.request_id`) → JSON-RPC 2.0: `method` = `message/stream` or `message/send`; `params.message = {kind:"message", role:"user", messageId: uuid4, parts:[{kind:"text", text}], contextId?, taskId?}`.
-- [ ] **T3.3** `parts_to_text(parts)`: `text` → text; `data` → fenced json; `file` → `📎 name (uri)`. Accepts both `kind` and `type` (A6).
-- [ ] **T3.4** `handle_result(result)` by `kind` (A7):
+- [x] **T3.1** `protocols/a2a.py`: `A2aProtocol(AgentProtocol)`, registered in `protocols/__init__.py`. Conversation state (`contextId`, `pendingTaskId`) lives in `ctx.session_state` (R4) and is cleared by `reset_session`.
+- [x] **T3.2** `build_payload(ctx)` (streaming from `ctx.settings["a2aStreaming"]`, rpc id = `ctx.request_id`) → JSON-RPC 2.0: `method` = `message/stream` or `message/send`; `params.message = {kind:"message", role:"user", messageId: uuid4, parts:[{kind:"text", text}], contextId?, taskId?}`.
+- [x] **T3.3** `parts_to_text(parts)`: `text` → text; `data` → fenced json; `file` → `📎 name (uri)`. Accepts both `kind` and `type` (A6).
+- [x] **T3.4** `handle_result(result)` by `kind` (A7):
   - `message` → chunk(parts)
   - `task` → artifacts' parts → chunk; if there are none, `status.message` → chunk; record `id`/`contextId`/`status.state`
   - `status-update` → `status.message` → **status** line (or chunk if `final` and nothing was emitted yet); state `failed` → error
   - `artifact-update` → chunk (respect `append`; the first artifact chunk of a new artifact starts with a blank-line separator)
-- [ ] **T3.5** `handle(response, emitter, ctx)`: each `response.events()` value is a JSON-RPC envelope (many when streamed, one for send) → `handle_result`. `error` in the envelope → `error` with `code: message`.
-- [ ] **T3.6** Update `SessionState` from the results (A8); `done.meta` includes `contextId`, `taskId`, `state`. If the state is `input-required`, add a status line "Agent is waiting for your input".
-- [ ] **T3.7** Tests: send→Message, send→Task with artifacts, send→Task failed, stream with status+artifact updates, JSON-RPC error, legacy `type` parts, and contextId carried into the second payload.
+- [x] **T3.5** `handle(response, emitter, ctx)`: each `response.events()` value is a JSON-RPC envelope (many when streamed, one for send) → `handle_result`. `error` in the envelope → `error` with `code: message`.
+- [x] **T3.6** Update `SessionState` from the results (A8); `done.meta` includes `contextId`, `taskId`, `state`. If the state is `input-required`, add a status line "Agent is waiting for your input".
+- [x] **T3.8** `python/tools/chat_cli.py`: terminal chat through the real bridge (`--protocol A2A`, `--stream`, `--real`, `--raw`), for trying A2A before the panel toggle exists and for checking real agents without VS Code.
+- [x] **T3.7** Tests: send→Message, send→Task with artifacts, send→Task failed, stream with status+artifact updates, JSON-RPC error, legacy `type` parts, and contextId carried into the second payload.
 
 ### Phase 4: Agent listing & protocol detection
 
@@ -222,7 +224,7 @@ python/
 - [ ] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
 - [ ] **T7.3** Manual test checklist (below) run in the Extension Development Host with `agentcore.mock=true`.
 - [ ] **T7.4** CHANGELOG entry.
-- [ ] **T7.5** Add `python/tests/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`.
+- [ ] **T7.5** Add `python/tests/**`, `python/tools/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`.
 
 ## 5. Manual test checklist (mock mode)
 
