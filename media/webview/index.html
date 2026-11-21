@@ -38,7 +38,10 @@
     <button id="switchNoBtn" class="secondary">Cancel</button>
   </div>
 
-  <main id="chat"></main>
+  <div class="chat-area">
+    <main id="chat"></main>
+    <button id="jumpBtn" class="jump secondary" title="Jump to latest" hidden>↓ Jump to latest</button>
+  </div>
 
   <div class="composer">
     <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
@@ -57,7 +60,7 @@
       <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button id="stopBtn" class="icon-btn secondary" title="Stop" aria-label="Stop" disabled hidden>
+      <button id="stopBtn" class="icon-btn secondary" title="Stop (Esc)" aria-label="Stop" disabled hidden>
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
       </button>
     </div>

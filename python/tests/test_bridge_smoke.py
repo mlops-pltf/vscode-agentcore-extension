@@ -59,6 +59,19 @@ class BridgeSmokeTest(unittest.TestCase):
             chunks = [e["text"] for e in self.for_request(events, request_id) if e["type"] == "chunk"]
             self.assertEqual("".join(chunks), MARKDOWN_SAMPLE, request_id)
 
+    def test_slow_one_piece_answer_waits_and_can_be_cancelled(self):
+        slow = dict(invoke("W", "slow"), protocol="A2A")
+        stopped = dict(invoke("X", "slow json"), requestId="X")
+        events = self.run_bridge([slow, stopped], [{"action": "cancel", "requestId": "X"}], pause=0.5)
+        w = self.for_request(events, "W")
+        self.assertEqual(w[-1]["type"], "done")
+        self.assertEqual(w[-1]["meta"]["state"], "completed")
+        self.assertGreaterEqual(w[-1]["meta"]["ms"], 3000)
+        self.assertTrue(any(e["type"] == "chunk" for e in w))
+        x = self.for_request(events, "X")
+        self.assertEqual([e["type"] for e in x], ["done"])
+        self.assertEqual(x[-1]["meta"]["state"], "cancelled")
+
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)
         s = self.for_request(events, "S")

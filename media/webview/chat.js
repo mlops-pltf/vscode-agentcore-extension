@@ -19,15 +19,56 @@
     ? (fn) => window.requestAnimationFrame(fn)
     : (fn) => setTimeout(fn, 16);
 
-  function scrollToBottom(container) {
-    container.scrollTop = container.scrollHeight;
+  // ---------- smart scrolling ----------
+
+  // New text keeps the chat scrolled to the bottom only while the user is there.
+  // Scrolling up to read stops that and shows the "Jump to latest" button.
+  const scroll = { follow: true, lastTop: 0, button: null };
+  const NEAR_BOTTOM_PX = 40;
+
+  function stopFollowing() {
+    scroll.follow = false;
+    scroll.button.hidden = false;
+  }
+
+  function initScroll(container, button) {
+    scroll.button = button;
+    // Wheel/trackpad up stops following at once, before the next text renders;
+    // waiting for the scroll event let new text pull the view back down
+    container.addEventListener('wheel', (event) => {
+      if (event.deltaY < 0) stopFollowing();
+    }, { passive: true });
+    container.addEventListener('scroll', () => {
+      const top = container.scrollTop;
+      const atBottom = container.scrollHeight - top - container.clientHeight < NEAR_BOTTOM_PX;
+      // Only the user scrolls up (also with the scrollbar); our own scrolling and
+      // growing text only go down. Following resumes when moving down to the bottom.
+      if (top < scroll.lastTop - 2) {
+        scroll.follow = false;
+      } else if (atBottom) {
+        scroll.follow = true;
+      }
+      scroll.lastTop = top;
+      button.hidden = scroll.follow;
+    });
+    button.addEventListener('click', () => scrollToBottom(container, true));
+  }
+
+  // force: the user sent a prompt or clicked "Jump to latest"
+  function scrollToBottom(container, force) {
+    if (force) scroll.follow = true;
+    if (scroll.follow) {
+      container.scrollTop = container.scrollHeight;
+      scroll.lastTop = container.scrollTop;
+    }
+    if (scroll.button) scroll.button.hidden = scroll.follow;
   }
 
   function appendMessage(container, text, cls) {
     container.querySelector('.empty')?.remove();
     const div = el('div', 'msg ' + cls, text);
     container.appendChild(div);
-    scrollToBottom(container);
+    scrollToBottom(container, cls === 'user');
     return div;
   }
 
@@ -51,15 +92,29 @@
       card.appendChild(chips);
     }
     container.replaceChildren(card);
+    scrollToBottom(container, true);
   }
 
-  // Three bouncing dots until the first words arrive (main.css animates them)
-  function typingDots() {
+  // Three bouncing dots and "Thinking · 4s" until the first words arrive
+  // (main.css animates the dots). Returns the node; the timer is kept on the reply.
+  function typingIndicator(reply) {
+    const wrap = el('span', 'thinking');
     const dots = el('span', 'typing');
     dots.setAttribute('role', 'status');
     dots.setAttribute('aria-label', 'Agent is replying');
     for (let i = 0; i < 3; i++) dots.appendChild(el('span'));
-    return dots;
+    const label = el('span', 'elapsed', 'Thinking');
+    wrap.append(dots, label);
+    const started = Date.now();
+    reply.timer = setInterval(() => {
+      label.textContent = `Thinking · ${Math.floor((Date.now() - started) / 1000)}s`;
+    }, 1000);
+    return wrap;
+  }
+
+  function stopTimer(reply) {
+    clearInterval(reply.timer);
+    reply.timer = undefined;
   }
 
   // Swap a button's icon for a tick for a moment after copying
@@ -121,11 +176,12 @@
     reply.status.hidden = true;
     reply.footer.hidden = true;
     reply.bar.hidden = true;
-    reply.text.replaceChildren(typingDots());
+    reply.text.replaceChildren(typingIndicator(reply));
     return reply;
   }
 
   function renderReply(reply) {
+    stopTimer(reply);
     reply.renderQueued = false;
     reply.text.replaceChildren(markdown.render(markdown.parse(reply.markdown), markdownHooks));
     scrollToBottom(reply.container);
@@ -149,6 +205,7 @@
   // End a reply: render the final text, then add an error line, the footer and
   // the actions (Copy when there is text; Retry when it failed and onRetry is given)
   function finishReply(reply, { footer, error, onRetry } = {}) {
+    stopTimer(reply);
     if (reply.received) {
       renderReply(reply);
     } else {
@@ -179,5 +236,5 @@
     return parts.filter(Boolean).join(' · ');
   }
 
-  app.chat = { configure, appendMessage, renderWelcome, createReply, addChunk, setStatus, finishReply, footerText };
+  app.chat = { configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, setStatus, finishReply, footerText };
 })(window.AgentCore);

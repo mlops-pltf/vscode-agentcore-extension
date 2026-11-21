@@ -31,6 +31,7 @@
   let currentAgentArn = '';
   let protocol = 'HTTP';
   let turns = 0;               // prompts sent in the current session
+  let lastPrompt = '';         // for ↑ in an empty composer
   const requests = new Map();  // requestId -> reply being written (see chat.createReply)
 
   const profileSelect = $('profileSelect');
@@ -172,6 +173,7 @@
     if (requests.size > 0 || !prompt || !agentArn) return;
 
     chatView.appendMessage(chat, prompt, 'user');
+    lastPrompt = prompt;
     promptInput.value = '';
     autoGrow();
     invoke({ prompt, agentArn, protocol });
@@ -322,8 +324,22 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    } else if (e.key === 'ArrowUp' && !promptInput.value && lastPrompt) {
+      // Recall the last prompt to edit or resend it
+      e.preventDefault();
+      promptInput.value = lastPrompt;
+      autoGrow();
+      promptInput.setSelectionRange(lastPrompt.length, lastPrompt.length);
     }
   });
+  // Esc anywhere in the panel stops the reply in progress
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && requests.size > 0) {
+      e.preventDefault();
+      stopAll();
+    }
+  });
+  chatView.initScroll(chat, $('jumpBtn'));
 
   showSettings();
   updateBusy();

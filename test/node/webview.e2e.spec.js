@@ -318,3 +318,104 @@ test('Retry: only on the latest failed reply, resends the same request in place'
   p.post({ type: 'bridge', state: 'restarting' });
   assert.ok(p.last().querySelector('.retry'));
 });
+
+test('thinking timer counts until the first words arrive', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  p.pick('demo-http-strands');
+
+  p.type('slow');  // a second before each line
+  const elapsed = () => p.last().querySelector('.elapsed');
+  assert.strictEqual(elapsed().textContent, 'Thinking');
+  assert.ok(await until(() => elapsed() && elapsed().textContent === 'Thinking · 1s', 2500), 'counts seconds');
+  await until(() => !elapsed(), 6000);
+  assert.ok(p.part(p.last(), 'text').textContent.length > 0, 'replaced by the reply text');
+  p.$('stopBtn').click();
+  await until(p.idle);
+});
+
+test('smart scrolling: follows the reply until the user scrolls up', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const chat = $('chat');
+  // jsdom has no layout: give the chat a fake size
+  let height = 1000;
+  Object.defineProperty(chat, 'scrollHeight', { get: () => height });
+  Object.defineProperty(chat, 'clientHeight', { get: () => 300 });
+  const userScroll = (top) => {
+    chat.scrollTop = top;
+    chat.dispatchEvent(new p.window.Event('scroll'));
+  };
+
+  p.type('hi');
+  assert.strictEqual(chat.scrollTop, 1000, 'sending scrolls to the bottom');
+  userScroll(chat.scrollTop);
+  userScroll(200);  // the user scrolls up to read
+  assert.strictEqual($('jumpBtn').hidden, false, 'Jump to latest shown');
+  height = 1500;    // more text arrives
+  await until(p.idle);
+  assert.strictEqual(chat.scrollTop, 200, 'view left alone');
+  assert.strictEqual($('jumpBtn').hidden, false);
+
+  $('jumpBtn').click();
+  assert.strictEqual(chat.scrollTop, 1500);
+  assert.strictEqual($('jumpBtn').hidden, true);
+
+  userScroll(400);
+  userScroll(1190);  // back near the bottom: following again
+  assert.strictEqual($('jumpBtn').hidden, true);
+  userScroll(300);
+  p.type('more');
+  assert.strictEqual(chat.scrollTop, 1500, 'a new prompt always scrolls down');
+  assert.strictEqual($('jumpBtn').hidden, true);
+  await until(p.idle);
+
+  // Small scrolls up near the bottom (a trackpad's first steps) still stop following
+  userScroll(1500);
+  userScroll(1490);
+  assert.strictEqual($('jumpBtn').hidden, false, 'a few pixels up is enough');
+  $('jumpBtn').click();
+  // Wheel up stops following before any scroll event arrives
+  chat.dispatchEvent(new p.window.WheelEvent('wheel', { deltaY: -4 }));
+  assert.strictEqual($('jumpBtn').hidden, false);
+  p.type('again');
+  await until(p.idle);
+  p.type('and again');
+  chat.dispatchEvent(new p.window.WheelEvent('wheel', { deltaY: -4 }));
+  height = 2000;
+  await until(p.idle);
+  assert.strictEqual(chat.scrollTop, 1500, 'new text did not pull the view down');
+});
+
+test('keyboard: ↑ recalls the last prompt, Esc stops the reply', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const key = (target, k) => {
+    const event = new p.window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
+  };
+  p.pick('demo-http-strands');
+
+  assert.ok(!key($('promptInput'), 'ArrowUp').defaultPrevented, 'nothing to recall yet');
+  p.type('slow one');
+  key(p.document.body, 'Escape');
+  await until(p.idle);
+  assert.ok(p.sent.some((m) => m.action === 'cancel'), 'Esc sent cancel');
+  assert.ok(p.part(p.last(), 'footer').textContent.endsWith('cancelled'));
+
+  key($('promptInput'), 'ArrowUp');
+  assert.strictEqual($('promptInput').value, 'slow one');
+  $('promptInput').value = 'draft';
+  assert.ok(!key($('promptInput'), 'ArrowUp').defaultPrevented, '↑ moves the cursor normally when there is text');
+  assert.strictEqual($('promptInput').value, 'draft');
+
+  const cancels = p.sent.filter((m) => m.action === 'cancel').length;
+  assert.ok(!key(p.document.body, 'Escape').defaultPrevented, 'Esc when idle is left to VS Code');
+  assert.strictEqual(p.sent.filter((m) => m.action === 'cancel').length, cancels, 'Esc when idle does nothing');
+});

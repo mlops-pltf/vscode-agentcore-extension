@@ -6,7 +6,8 @@ flow through exactly the same parsing code as real responses.
 
 Keywords in the prompt pick a scenario:
   json   HTTP agent answers with a single application/json body
-  slow   one second between lines (to try cancelling)
+  slow   one second between lines, or 3 seconds before a one-piece answer
+         (A2A message/send, HTTP json); to try cancelling and the timer
   error  the agent container fails (RuntimeClientError)
   tool      the agent reports a tool call before answering
   input     A2A task stops in the input-required state (answer it to continue)
@@ -70,6 +71,10 @@ class FakeBody:
             yield line
 
     def read(self) -> bytes:
+        # A one-piece answer arrives after the delay; close() during the wait
+        # fails the read, like reading a closed stream
+        if self._closed.wait(self._delay):
+            raise ValueError("read of closed file")
         return b"\n".join(self._lines)
 
     def close(self) -> None:
@@ -115,6 +120,7 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
         raise AgentCoreError("RuntimeClientError: mock agent raised ValueError('something broke')")
 
     delay = SLOW_DELAY if "slow" in words else FAST_DELAY
+    one_piece_delay = 3 * SLOW_DELAY if "slow" in words else 0
     reply = (f"You said: {prompt!r}. This is a mock reply from "
              f"{agent_arn.rsplit('/', 1)[-1]}, streamed word by word.")
     if "markdown" in words:
@@ -128,9 +134,9 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
             reply = f"Thanks, continuing task {task_id}. " + reply
         if request.get("method") == "message/stream":
             return _sse(_a2a_stream_events(request, reply, words), delay)
-        return _json(_a2a_send_result(request, reply, words))
+        return _json(_a2a_send_result(request, reply, words), one_piece_delay)
     if "json" in words:
-        return _json({"result": {"role": "assistant", "content": [{"text": reply}]}})
+        return _json({"result": {"role": "assistant", "content": [{"text": reply}]}}, one_piece_delay)
     return _sse(_http_stream_events(reply, words), delay)
 
 
@@ -145,9 +151,9 @@ def _sse(events: List[dict], delay: float) -> dict:
             "response": FakeBody(lines, delay)}
 
 
-def _json(obj: dict) -> dict:
+def _json(obj: dict, delay: float = 0) -> dict:
     return {"contentType": "application/json", "statusCode": 200,
-            "response": FakeBody([json.dumps(obj).encode("utf-8")], 0)}
+            "response": FakeBody([json.dumps(obj).encode("utf-8")], delay)}
 
 
 # ---------- HTTP (Strands-style stream, assumptions A3/A4) ----------
