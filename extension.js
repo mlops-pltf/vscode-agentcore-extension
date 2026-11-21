@@ -31,6 +31,11 @@ class AgentCoreViewProvider {
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       if (msg.type === 'ssoLogin') {
+        // Profile name goes into a shell command, so only allow safe characters
+        if (!/^[\w.@+-]+$/.test(msg.profile || '')) {
+          vscode.window.showErrorMessage(`AgentCore Chat: refusing to run SSO login for invalid profile name "${msg.profile}".`);
+          return;
+        }
         const terminal = vscode.window.createTerminal(`AWS SSO (${msg.profile})`);
         terminal.show();
         terminal.sendText(`aws sso login --profile ${msg.profile}`);
