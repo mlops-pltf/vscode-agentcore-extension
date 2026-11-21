@@ -47,7 +47,7 @@ list_agents     {profile, refresh?}       # refresh skips the 5-minute cache
 invoke_agent    {requestId, profile, agentArn, protocol: "HTTP"|"A2A", prompt, sessionId}
 cancel          {requestId}
 reset_session   {sessionId}
-settings (injected) {mock: bool, a2aStreaming: bool, debugRaw: bool}
+settings (injected) {mock: bool, region: str, a2aStreaming: bool, debugRaw: bool}   # added by extension.js to every message
 ```
 
 **Python → webview** (everything is one JSON object per stdout line):
@@ -64,6 +64,7 @@ done          {requestId, meta: {state, protocol, mock, contentType, ms, context
 error         {requestId?, message}
 raw           {requestId, line}                 # extension sends this to the Output channel only
 bridge        {state: "ready"|"restarting"|"down"}
+settings      {data: {mock, region, a2aStreaming, debugRaw}}   # extension -> webview when settings change; also embedded in the HTML at load
 ```
 
 ## 4. Tasks
@@ -197,11 +198,11 @@ python/
 
 ### Phase 5: Extension host (`extension.js`)
 
-- [ ] **T5.1** New settings in `package.json`: `agentcore.mock` (bool, default `false`), `agentcore.a2aStreaming` (bool, `false`), `agentcore.debugRawResponses` (bool, `false`), `agentcore.region` (string, optional).
-- [ ] **T5.2** Add `settings` to every message sent to Python.
-- [ ] **T5.3** Output channel "AgentCore Chat": receives Python stderr and `raw` events (when debug is on); `raw` is never forwarded to the webview.
-- [ ] **T5.4** Bridge supervision: on unexpected `exit`, post `bridge:restarting` and respawn with backoff (1 s, 3 s, 10 s; give up after 3 failures in 60 s → `bridge:down` plus an error notification with a "Show Logs" button).
-- [ ] **T5.5** Kill the Python process on `deactivate` as well as on view dispose.
+- [x] **T5.1** New settings in `package.json`: `agentcore.mock` (bool, default `false`), `agentcore.a2aStreaming` (bool, `false`), `agentcore.debugRawResponses` (bool, `false`), `agentcore.region` (string, default `eu-central-1`; empty = use the profile's region). Region overrides the profile's region in Python (client and agent-list caches are keyed by it). Changing mock/region reloads the agent list; changing `pythonPath` restarts the bridge.
+- [x] **T5.2** Add `settings` to every message sent to Python.
+- [x] **T5.3** Output channel "AgentCore Chat": receives Python stderr and `raw` events (when debug is on); `raw` is never forwarded to the webview.
+- [x] **T5.4** Bridge supervision: on unexpected `exit`, post `bridge:restarting` and respawn with backoff (1 s, 3 s, 10 s). A 4th crash within 60 s → `bridge:down` plus an error notification with "Show Logs" / "Restart". Commands **AgentCore: Show Logs** and **AgentCore: Restart Backend** (resets the backoff). Messages sent while restarting are queued and delivered.
+- [x] **T5.5** Kill the Python process on `deactivate` as well as on view dispose.
 
 ### Phase 6: Webview
 
