@@ -82,6 +82,7 @@ Each task is one small commit that can be reviewed alone. "Done when" is the che
 
 - [x] **T0.6** *(found while testing Phase 1)* Activity Bar icon shows as a gray square. Cause: `media/robot.svg` has `xmlns="http://w3.org"` instead of `http://www.w3.org/2000/svg`. VS Code uses the icon as a CSS mask, and an invalid SVG makes the mask fail, so the whole box gets filled. Fix the namespace.
   *Done when:* the Activity Bar shows the robot outline, and it follows the theme colour (dim when inactive, bright when selected).
+- [x] **T0.7** Replace the generic robot with an "agent in a speech bubble" icon (picked from 3 candidates compared side by side in the Activity Bar). 1.5px strokes to match VS Code's built-in icons; still `currentColor` so it follows the theme.
 
 ### Phase 1: Python restructure (same behaviour, new structure)
 
