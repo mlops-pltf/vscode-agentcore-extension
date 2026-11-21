@@ -36,6 +36,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 | A9 | `runtimeSessionId` must be ≥33 chars | Low | UUID4 (36 chars) |
 | A10 | The SSO role-session name (last segment of the assumed-role ARN) identifies the user, and roles have `bedrock-agentcore:InvokeAgentRuntimeForUser` | Med: IAM may be missing | Dedicated error message (T1.5b); value shown in the raw debug log |
 | A11 | If an agent's events can't be JSON-serialized, the server may send `json.dumps(str(event))`, i.e. a JSON string holding a Python dict repr | Low | `ast.literal_eval` on string events that look like `{...}`; fixture `python_repr.sse` |
+| A12 | `traceId` accepts a W3C-style 32-hex trace id | Med: format not documented in what we found | Sent as-is; on `ValidationException` retry once without it (T6.28) |
+| A13 | CloudWatch GenAI Observability lives at `https://<region>.console.aws.amazon.com/cloudwatch/home?region=<region>#gen-ai-observability` | Med: no deep link per trace found | Opens the dashboard only; one constant to fix |
+| A14 | AgentCore's agent card follows the A2A spec: `skills[].{name,description,examples}`, `capabilities.streaming`, `version` | Low | Missing fields are optional; fixture from a real card when available |
 
 ## 3. Message contracts (Python ⇄ extension ⇄ webview)
 
@@ -236,9 +239,55 @@ Done in three rounds, each on branch `phase-6-webview`, tested by the user and c
 
 *Done when:* the arrow/stop button, typing dots and right-side placement work in both light and dark themes.
 
+#### Round 6d: Premium look (added 2026-11-21, from user feedback before Phase 7)
+
+Goal: the panel should feel as polished as Copilot / Claude chat (not identical), because it will be shown to customers. Chosen direction: **composer pickers**, with a slim toolbar on top and the agent and protocol chosen inside the input card. Still no new libraries: inline SVG icons, VS Code theme variables (`--vscode-chat-*` where available), and DOM built with `textContent`/`createElement` (never `innerHTML`).
+
+Split into three sub-rounds (tested and committed one at a time):
+
+##### 6d.1: Layout and look
+
+- [ ] **T6.12** Responsive layout. Nothing is cut off down to ~220 px wide: selects and labels shrink with ellipsis (`min-width: 0`), and icon buttons never shrink or wrap away. *(Bug: MOCK, ↻ and + disappeared in narrow panels.)*
+- [ ] **T6.13** Slim toolbar. One row: profile picker (compact), MOCK badge, icon buttons **Refresh** and **New chat** (inline SVG, tooltips). The SSO banner, hidden-agents note and backend banner sit below it.
+- [ ] **T6.14** Composer card: a rounded input card (focus ring in the theme's focus colour) with an auto-growing textarea (up to ~8 lines), placeholder "Ask *agent*…", and a footer row with the **agent chip** (picker), **protocol chip** (HTTP | A2A), a muted "⏎ send · ⇧⏎ new line" hint (hidden when narrow) and the Send/Stop icon.
+- [ ] **T6.15** Message design. User prompts are right-aligned subtle bubbles. Agent replies have no box: a small robot avatar and the agent name above full-width text, the footer muted underneath, and errors inline. New messages fade in gently (respecting reduced motion).
+- [ ] **T6.17** Empty state. When the chat is empty, show a welcome card with the robot icon, the agent's name, description and protocol, and 2–3 suggestion chips that fill the composer when clicked.
+
+*Done when:* at ~220 px wide every control is still usable; the toolbar, composer card (with agent and protocol chips), new message style and welcome screen look right in light and dark themes; all 6b behaviour still works (e2e checks updated).
+
+##### 6d.2: Rich replies
+
+- [ ] **T6.16** Markdown for agent replies. A small, safe renderer that builds DOM nodes: paragraphs, headings, **bold**/*italic*, `inline code`, fenced code blocks (language label + **Copy**), bulleted/numbered lists, block quotes, rules and links. Links open in the browser through the extension, `http(s)` only. Re-rendered as text streams in (at most once per animation frame). User prompts stay plain text.
+- [ ] **T6.18** Reply actions: a **Copy** button on agent replies (on hover/focus) that copies the original Markdown. Copying goes through the extension (`vscode.env.clipboard`), so it works in every webview.
+- [ ] **T6.19** Code block actions (from research, matching Copilot): besides **Copy**, **Insert at Cursor** (active editor), **Open in New File** (untitled document in the block's language), and for shell blocks (`bash`, `sh`, `zsh`, `shell`, `console`) **Insert into Terminal**, which inserts the command but **does not run it**. All go through the extension.
+- [ ] **T6.24** **Retry** on failed replies only (error or backend lost): resends the same prompt with the same agent and protocol. It is not offered on successful replies, because re-running an agent can have side effects.
+
+*Done when:* the mock's `markdown` reply renders headings, lists, code (with language label) and links correctly while streaming; Copy reply, the code-block actions and Retry work; nothing is built with `innerHTML`.
+
+##### 6d.3: Behaviour and accessibility
+
+- [ ] **T6.20** Elapsed timer while waiting: the typing indicator shows *Thinking · 4s* until the first words arrive, so long waits are understandable.
+- [ ] **T6.21** Smart scrolling: auto-scroll only while the user is at the bottom. If they scroll up to read, leave the view alone and show a **↓ Jump to latest** button.
+- [ ] **T6.22** Keyboard: **↑** in an empty composer recalls the last prompt, **Esc** stops a reply in progress, and a keybinding for **AgentCore: Open Chat** (`Ctrl+Alt+A` / `Cmd+Alt+A`, if free) opens and focuses the composer.
+- [ ] **T6.23** Accessibility (required by VS Code's webview guidelines and by enterprise customers): the chat is `role="log"`; a separate visually hidden `role="status"` region announces "Agent is replying…" / "Reply complete" / errors, and the streaming text itself is **not** in a live region; every chip, button and action can be reached and used with the keyboard, with a visible focus ring (`--vscode-focusBorder`); icon buttons have `aria-label`s; colours come from theme variables.
+
+*Done when:* the timer, smart scrolling and keyboard shortcuts work, and the whole panel can be used with the keyboard alone, with status announcements in a screen reader (VoiceOver spot check).
+
+#### Round 6e: AgentCore depth (added 2026-11-21, from web research; builds on 6d)
+
+Goal: features specific to AgentCore that generic chat tools don't have, as selling points. Logic stays in Python; every new AWS call degrades gracefully if the role lacks the permission (logged, never blocks chatting). APIs confirmed in boto3 1.42.97: `get_agent_card`, `stop_runtime_session`.
+
+- [ ] **T6.25** Agent Card (Python). New bridge action `get_agent_card {profile, agentArn}` → event `agent_card {agentArn, card}` where `card = {name, description, version, skills: [{name, description, examples}], streaming}` (or `null` plus a note). Only for A2A agents, cached per agent like the agent list. `AccessDenied` (needs `bedrock-agentcore:GetAgentCard`) → `card: null`. The mock returns a card with skills and `streaming: true`.
+- [ ] **T6.26** Use the card. The empty state (T6.17) shows the agent's **skills**, with their examples as suggestion chips (falling back to generic chips) and the version. **Automatic A2A streaming:** `agentcore.a2aStreaming` becomes `auto` (default) / `on` / `off`. With `auto`, Python uses `message/stream` when the cached card says `capabilities.streaming`, otherwise `message/send`. *(Resolves Q3 per agent instead of globally.)*
+- [ ] **T6.27** Free server resources: when a session ends (New chat, agent change, protocol switch), Python calls `stop_runtime_session` for every agent that session used (profile, region and ARN recorded at invoke time), in the background. Errors (`AccessDenied`, session already gone) are logged only. Needs `bedrock-agentcore:StopRuntimeSession`. Stop (cancel) does *not* end the session, so the user can continue.
+- [ ] **T6.28** Trace ID per reply: Python generates a trace id for every invoke, sends it as `traceId`, and returns it in `done.meta.traceId`. The reply's actions get **Copy trace ID** and **Open CloudWatch** (GenAI Observability page for the region, opened through the extension). If AgentCore rejects the id format (`ValidationException`), it retries once without it and logs a warning (A12).
+- [ ] **T6.29** Identity at a glance: new bridge action `whoami {profile}` → `identity {profile, account, region, user}` (from `sts:GetCallerIdentity`, already used for `runtimeUserId`; cached). Shown as the profile picker's tooltip and in the Output channel. The mock returns a fake identity.
+
+*Done when:* with the mock, an A2A agent shows its skills as chips and streams automatically, New chat logs a stopped session, each reply can copy its trace id and open CloudWatch, and the profile tooltip shows the account, region and user. The Python tests cover the card parsing, auto-streaming choice, stop-session bookkeeping and the trace-id fallback.
+
 ### Phase 7: Docs & verification
 
-- [ ] **T7.1** README: settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture, and a tip on where the chat lives (right, as a tab next to Copilot Chat), moving it to the left (right-click → Move View, or drag) and back (right-click → Reset Location).
+- [ ] **T7.1** README: required IAM permissions (`InvokeAgentRuntime`, `InvokeAgentRuntimeForUser`, `ListAgentRuntimes`, `GetAgentRuntime`, and the optional `GetAgentCard`, `StopRuntimeSession`), settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture, and a tip on where the chat lives (right, as a tab next to Copilot Chat), moving it to the left (right-click → Move View, or drag) and back (right-click → Reset Location).
 - [ ] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
 - [ ] **T7.3** Manual test checklist (below) run in the Extension Development Host with `agentcore.mock=true`.
 - [ ] **T7.4** CHANGELOG entry.
@@ -261,10 +310,10 @@ Done in three rounds, each on branch `phase-6-webview`, tested by the user and c
 
 - **Q1** ~~Registry vs runtimes?~~ **Decided 2026-11-21:** list runtimes directly; drop the registry.
 - **Q2** ~~HTTP body?~~ **Decided 2026-11-21:** `{"prompt": "..."}` (confirms A1).
-- **Q3** ~~A2A streaming?~~ **Decided 2026-11-21:** unknown → default `message/send`; `agentcore.a2aStreaming` (default `false`) switches to `message/stream`. Both paths built and tested.
+- **Q3** ~~A2A streaming?~~ **Decided 2026-11-21:** unknown → default `message/send`; `agentcore.a2aStreaming` (default `false`) switches to `message/stream`. Both paths built and tested. *Update:* round 6e (T6.26) makes this automatic per agent from its Agent Card (`auto` default).
 - **Q4** ~~Qualifier?~~ **Decided 2026-11-21:** no qualifier sent; AgentCore uses the DEFAULT endpoint.
 - **Q5** ~~runtimeUserId?~~ **Decided 2026-11-21:** derive it from the SSO identity (see T1.5b, A10).
 
 ## 7. Out of scope here (next "swanky" round)
-
+ *Also deferred (2026-11-21):* chat history (until the extension is approved), and sending code context (selection / active file / "Ask AgentCore about selection").
 Markdown + code highlighting with Copy/Insert buttons, codicons, editor-selection context (`@selection`), status bar agent switcher, chat history persistence, export to Markdown.
