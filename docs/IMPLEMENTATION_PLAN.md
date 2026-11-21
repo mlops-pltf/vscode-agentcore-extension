@@ -47,6 +47,7 @@ list_agents     {profile, refresh?}       # refresh skips the 5-minute cache
 invoke_agent    {requestId, profile, agentArn, protocol: "HTTP"|"A2A", prompt, sessionId}
 cancel          {requestId}
 reset_session   {sessionId}
+restartBackend / showLogs / ssoLogin   # webview -> extension only (not forwarded to Python)
 settings (injected) {mock: bool, region: str, a2aStreaming: bool, debugRaw: bool}   # added by extension.js to every message
 ```
 
@@ -216,14 +217,14 @@ Done in three rounds, each on branch `phase-6-webview`, tested by the user and c
 
 #### Round 6b: Chat core
 
-- [ ] **T6.1** Protocol toggle: a segmented control `HTTP | A2A` next to the agent picker. Picking an agent sets it from `agent.protocol` when known. A manual override is saved per agent ARN in `vscode.setState`. The toggle shows an "auto" dot when it matches the detected protocol.
-- [ ] **T6.2** Changing the protocol mid-conversation asks "Start new session?", since an A2A context can't be reused by HTTP.
-- [ ] **T6.3** Request IDs: each send creates `requestId`; bubbles are stored in `Map<requestId, el>`; every incoming event is routed by ID (fixes the mixed-up replies).
-- [ ] **T6.4** While waiting for or streaming a reply: **Send is disabled** and a **Stop** button is enabled (posts `cancel`). Both go back on `done`/`error`. Enter in the textbox does nothing while busy. *(Refined from user feedback.)*
-- [ ] **T6.5** `status` events render as a small muted line inside the bubble (the latest one replaces the previous).
-- [ ] **T6.6** Footer on `done`: `A2A · 1.8s · task completed` (from `meta`).
-- [ ] **T6.7** `bridge` events: a thin banner ("Reconnecting…" / "Backend stopped — Show Logs").
-- [ ] **T6.8** "MOCK" badge in the header when `settings.mock` is on, so nobody confuses fake replies with real ones.
+- [x] **T6.1** Protocol toggle: a segmented control `HTTP | A2A` next to the agent picker. Picking an agent sets it from `agent.protocol` when known. A manual override is saved per agent ARN in `vscode.setState`. The toggle shows an "auto" dot when it matches the detected protocol. Unknown protocol → HTTP with a "choose" hint. *Also:* changing agent mid-chat starts a new chat, because an A2A context belongs to one agent.
+- [x] **T6.2** Changing the protocol mid-conversation asks "Start new session?", since an A2A context can't be reused by HTTP. Implemented as an in-panel notice ([Switch] / [Cancel]), because VS Code webviews block `window.confirm`. A new chat sends `reset_session` for the old session id.
+- [x] **T6.3** Request IDs: each send creates `requestId`; bubbles are stored in `Map<requestId, el>`; every incoming event is routed by ID (fixes the mixed-up replies).
+- [x] **T6.4** While waiting for or streaming a reply: **Send is disabled** and a **Stop** button is enabled (posts `cancel`). Both go back on `done`/`error`. Enter in the textbox does nothing while busy. *(Refined from user feedback.)*
+- [x] **T6.5** `status` events render as a small muted line inside the bubble (the latest one replaces the previous).
+- [x] **T6.6** Footer on `done`: `A2A · 1.8s · task completed` (from `meta`).
+- [x] **T6.7** `bridge` events: a thin banner ("Reconnecting…" / "Backend stopped — Show Logs"). The banner replaces the Phase 5 red chat lines; replies in progress are marked "Backend stopped before the reply finished." The banner buttons post `restartBackend` / `showLogs`, which run the matching commands.
+- [x] **T6.8** "MOCK" badge in the header when `settings.mock` is on, so nobody confuses fake replies with real ones.
 
 *Done when:* an A2A agent can be chatted with from the panel (toggle set automatically), two prompts in a row never mix, Stop cancels a slow reply, and the MOCK badge and backend banner behave as described.
 
