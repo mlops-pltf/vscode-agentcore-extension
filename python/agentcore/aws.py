@@ -4,11 +4,13 @@ mock_runtime.py exposes the same functions, so the bridge can swap one module
 for the other based on the `mock` setting.
 """
 import threading
-from typing import Dict, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import (
     ClientError,
+    NoRegionError,
     SSOError,
     SSOTokenLoadError,
     TokenRetrievalError,
@@ -36,6 +38,42 @@ def _client(profile: str, service: str):
 
 def list_profiles():
     return boto3.Session().available_profiles
+
+
+def list_agents(profile: str) -> List[dict]:
+    """READY agent runtimes in the profile's account/region, with their protocol.
+
+    list_agent_runtimes has no protocol, so each runtime is looked up with
+    get_agent_runtime (in parallel). If that lookup fails, protocol is None
+    and the user picks it with the toggle.
+    """
+    try:
+        control = _client(profile, "bedrock-agentcore-control")
+        runtimes = [r for page in control.get_paginator("list_agent_runtimes").paginate()
+                    for r in page.get("agentRuntimes", []) if r.get("status") == "READY"]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            protocols = list(pool.map(lambda r: _protocol_of(control, r["agentRuntimeId"]), runtimes))
+    except _SSO_ERRORS:
+        raise SsoExpired(profile)
+    except NoRegionError:
+        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config.")
+    except ClientError as e:
+        err = e.response.get("Error", {})
+        raise AgentCoreError(f"Could not list agents: {err.get('Code', '')}: {err.get('Message', str(e))}")
+
+    return [{"name": r.get("agentRuntimeName") or r["agentRuntimeId"],
+             "arn": r["agentRuntimeArn"],
+             "description": r.get("description", ""),
+             "protocol": protocol}
+            for r, protocol in zip(runtimes, protocols)]
+
+
+def _protocol_of(control, runtime_id: str) -> Optional[str]:
+    try:
+        runtime = control.get_agent_runtime(agentRuntimeId=runtime_id)
+    except ClientError:
+        return None
+    return (runtime.get("protocolConfiguration") or {}).get("serverProtocol")
 
 
 def get_runtime_user_id(profile: str) -> str:
