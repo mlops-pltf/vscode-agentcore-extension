@@ -107,8 +107,12 @@ class AgentCoreViewProvider {
         terminal.sendText(`aws sso login --profile ${msg.profile}`);
         return;
       }
-      if (msg.type === 'newSession') {
-        this._view?.webview.postMessage({ type: 'sessionReset', sessionId: crypto.randomUUID() });
+      if (msg.type === 'restartBackend') {
+        vscode.commands.executeCommand('agentcore.restartBackend');
+        return;
+      }
+      if (msg.type === 'showLogs') {
+        vscode.commands.executeCommand('agentcore.showLogs');
         return;
       }
       this._sendToPython(msg);
@@ -270,7 +274,6 @@ class AgentCoreViewProvider {
 
     if (attempt > RESTART_DELAYS_MS.length) {
       this._post({ type: 'bridge', state: 'down' });
-      this._post({ type: 'error', message: 'AgentCore backend stopped. Run "AgentCore: Restart Backend" to try again.' });
       vscode.window
         .showErrorMessage('AgentCore Chat: the Python backend keeps crashing.', 'Show Logs', 'Restart')
         .then((choice) => {
@@ -283,7 +286,6 @@ class AgentCoreViewProvider {
     const delay = RESTART_DELAYS_MS[attempt - 1];
     this._log.info(`Restarting Python bridge in ${delay / 1000}s (attempt ${attempt} of ${RESTART_DELAYS_MS.length})`);
     this._post({ type: 'bridge', state: 'restarting' });
-    this._post({ type: 'error', message: 'AgentCore backend stopped unexpectedly. Restarting...' });
     setTimeout(() => this._startPythonBridge(), delay);
   }
 
@@ -312,16 +314,33 @@ class AgentCoreViewProvider {
   <div class="controls">
     <div class="row">
       <select id="profileSelect"><option value="">Loading profiles...</option></select>
+      <span id="mockBadge" class="badge" title="Replies come from the built-in mock (setting agentcore.mock)" hidden>MOCK</span>
       <button id="refreshBtn" title="Refresh Agents">↻</button>
     </div>
     <div class="row">
       <select id="agentSelect"><option value="">Select profile first...</option></select>
-      <button id="newChatBtn" title="New Session">+</button>
+      <div id="protocolToggle" class="segmented" role="group" aria-label="Agent protocol">
+        <button data-protocol="HTTP" aria-pressed="true">HTTP</button>
+        <button data-protocol="A2A" aria-pressed="false">A2A</button>
+      </div>
+      <button id="newChatBtn" title="New chat">+</button>
     </div>
+    <div id="agentsNote" class="note" hidden></div>
     <div id="ssoBanner">
       <span>SSO token expired for this profile.</span>
       <button id="ssoLoginBtn">Run aws sso login</button>
     </div>
+  </div>
+
+  <div id="bridgeBanner" class="banner" hidden>
+    <span id="bridgeText"></span>
+    <button id="bridgeRestartBtn">Restart</button>
+    <button id="bridgeLogsBtn" class="secondary">Show Logs</button>
+  </div>
+  <div id="switchNotice" class="notice" hidden>
+    <span id="switchText"></span>
+    <button id="switchYesBtn">Switch</button>
+    <button id="switchNoBtn" class="secondary">Cancel</button>
   </div>
 
   <div id="chat"></div>
@@ -329,6 +348,7 @@ class AgentCoreViewProvider {
   <div class="input-box">
     <textarea id="promptInput" placeholder="Message selected agent... (Enter to send)"></textarea>
     <button id="sendBtn">Send</button>
+    <button id="stopBtn" class="secondary" disabled>Stop</button>
   </div>
 
   <script nonce="${nonce}" id="init" type="application/json">${init}</script>

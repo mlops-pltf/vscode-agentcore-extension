@@ -15,3 +15,35 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .input-box { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--vscode-panel-border); }
 textarea { flex: 1; resize: none; height: 50px; }
 #ssoLoginBtn { margin-top: 5px; width: 100%; }
+
+/* Elements toggled with the hidden attribute must stay hidden even if styled with display */
+[hidden] { display: none !important; }
+
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+
+/* MOCK badge */
+.badge { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; padding: 2px 6px; border-radius: 10px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+
+/* HTTP | A2A toggle; the dot marks a protocol detected from the agent */
+.segmented { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+.segmented button { background: transparent; color: var(--vscode-foreground); border-radius: 0; padding: 4px 7px; font-size: 11px; }
+.segmented button[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.segmented button[aria-pressed="false"]:hover { background: var(--vscode-toolbar-hoverBackground); }
+.segmented.auto button[aria-pressed="true"]::after { content: "\2022"; margin-left: 3px; }
+
+.note { font-size: 11px; opacity: 0.7; }
+
+/* Backend banner and protocol-switch notice */
+.banner, .notice { display: flex; gap: 6px; align-items: center; font-size: 12px; padding: 6px 8px; margin-top: 8px; border-radius: 4px; }
+.banner span, .notice span { flex: 1; }
+.banner { background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); }
+.banner.down { background: var(--vscode-inputValidation-errorBackground); border-color: var(--vscode-inputValidation-errorBorder); }
+.notice { background: var(--vscode-inputValidation-infoBackground); border: 1px solid var(--vscode-inputValidation-infoBorder); }
+.banner button, .notice button { padding: 3px 8px; font-size: 11px; }
+
+/* Parts of an agent reply */
+.msg .status { font-size: 11px; font-style: italic; opacity: 0.75; margin-bottom: 4px; }
+.msg .error-text { color: var(--vscode-errorForeground); margin-top: 4px; }
+.msg .footer { font-size: 10px; opacity: 0.6; margin-top: 6px; }
