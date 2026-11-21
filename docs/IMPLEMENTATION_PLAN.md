@@ -69,15 +69,15 @@ Each task is one small commit that can be reviewed alone. "Done when" is the che
 
 ### Phase 0: Hygiene & security (no behaviour change)
 
-- [ ] **T0.1** `python/requirements.txt` → `boto3>=1.40.0`.
+- [x] **T0.1** `python/requirements.txt` → `boto3>=1.40.0`.
   *Done when:* a fresh managed venv can `import boto3` and create a `bedrock-agentcore` client.
-- [ ] **T0.2** Re-sync the venv when requirements change: store a sha256 of `requirements.txt` in `<venv>/.req-hash`, and run `pip install -r` again on mismatch (`extension.js::_ensurePythonEnv`).
+- [x] **T0.2** Re-sync the venv when requirements change: store a sha256 of `requirements.txt` in `<venv>/.req-hash`, and run `pip install -r` again on mismatch (`extension.js::_ensurePythonEnv`).
   *Done when:* editing requirements and reloading triggers a reinstall exactly once.
-- [ ] **T0.3** Webview CSP with a per-render nonce (`default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-…'`).
+- [x] **T0.3** Webview CSP with a per-render nonce (`default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-…'`).
   *Done when:* the panel works and DevTools shows no CSP violations.
-- [ ] **T0.4** Replace every `innerHTML` built from data (profiles, agents) with `document.createElement('option')` + `textContent`.
+- [x] **T0.4** Replace every `innerHTML` built from data (profiles, agents) with `document.createElement('option')` + `textContent`.
   *Done when:* a profile named `<img src=x onerror=alert(1)>` shows up as text.
-- [ ] **T0.5** Check the profile name against `^[\w.@+-]+$` before `aws sso login`; show an error message otherwise.
+- [x] **T0.5** Check the profile name against `^[\w.@+-]+$` before `aws sso login`; show an error message otherwise.
   *Done when:* a profile containing `; rm` is refused.
 
 ### Phase 1: Python restructure (same behaviour, new structure)
