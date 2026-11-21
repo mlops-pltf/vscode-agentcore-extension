@@ -25,7 +25,7 @@ class AgentCoreViewProvider {
   async resolveWebviewView(webviewView) {
     this._view = webviewView;
     webviewView.webview.options = { enableScripts: true };
-    webviewView.webview.html = this._getHtml();
+    webviewView.webview.html = this._getHtml(webviewView.webview);
 
     await this._startPythonBridge();
 
@@ -160,12 +160,14 @@ class AgentCoreViewProvider {
     }
   }
 
-  _getHtml() {
+  _getHtml(webview) {
     const initialSessionId = crypto.randomUUID();
+    const nonce = crypto.randomBytes(16).toString('base64');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 10px; display: flex; flex-direction: column; height: 95vh; margin: 0; }
   .controls { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-panel-border); }
@@ -207,7 +209,7 @@ class AgentCoreViewProvider {
     <button id="sendBtn">Send</button>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let sessionId = "${initialSessionId}";
     let currentAgentBubble = null;
