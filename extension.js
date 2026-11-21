@@ -189,11 +189,11 @@ class AgentCoreViewProvider {
 <body>
   <div class="controls">
     <div class="row">
-      <select id="profileSelect"><option>Loading profiles...</option></select>
+      <select id="profileSelect"><option value="">Loading profiles...</option></select>
       <button id="refreshBtn" title="Refresh Agents">↻</button>
     </div>
     <div class="row">
-      <select id="agentSelect"><option>Select profile first...</option></select>
+      <select id="agentSelect"><option value="">Select profile first...</option></select>
       <button id="newChatBtn" title="New Session">+</button>
     </div>
     <div id="ssoBanner">
@@ -220,13 +220,28 @@ class AgentCoreViewProvider {
     const chat = document.getElementById('chat');
     const promptInput = document.getElementById('promptInput');
 
+    // Fill a <select> safely: text goes through textContent, never parsed as HTML
+    function setOptions(select, items) {
+      select.replaceChildren(...items.map(({ value, label, title }) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (title) opt.title = title;
+        return opt;
+      }));
+    }
+
+    function setPlaceholder(select, label) {
+      setOptions(select, [{ value: '', label }]);
+    }
+
     vscode.postMessage({ action: 'list_profiles' });
 
     function loadAgents() {
       const profile = profileSelect.value;
       if (!profile) return;
       ssoBanner.style.display = 'none';
-      agentSelect.innerHTML = '<option>Loading agents...</option>';
+      setPlaceholder(agentSelect, 'Loading agents...');
       vscode.postMessage({ action: 'list_agents', profile });
     }
 
@@ -278,17 +293,17 @@ class AgentCoreViewProvider {
     window.addEventListener('message', (event) => {
       const msg = event.data;
       if (msg.type === 'profiles') {
-        profileSelect.innerHTML = msg.data.map(p => \`<option value="\${p}">\${p}</option>\`).join('');
+        setOptions(profileSelect, msg.data.map(p => ({ value: p, label: p })));
         loadAgents();
       } else if (msg.type === 'agents') {
         if (!msg.data.length) {
-          agentSelect.innerHTML = '<option value="">No agents found</option>';
+          setPlaceholder(agentSelect, 'No agents found');
         } else {
-          agentSelect.innerHTML = msg.data.map(a => \`<option value="\${a.arn}" title="\${a.description}">\${a.name}</option>\`).join('');
+          setOptions(agentSelect, msg.data.map(a => ({ value: a.arn, label: a.name, title: a.description })));
         }
       } else if (msg.type === 'sso_expired') {
         ssoBanner.style.display = 'block';
-        agentSelect.innerHTML = '<option value="">SSO Login Required</option>';
+        setPlaceholder(agentSelect, 'SSO Login Required');
       } else if (msg.type === 'chunk') {
         if (currentAgentBubble) {
           if (currentAgentBubble.textContent === '...') currentAgentBubble.textContent = '';
@@ -299,7 +314,7 @@ class AgentCoreViewProvider {
         currentAgentBubble = null;
       } else if (msg.type === 'sessionReset') {
         sessionId = msg.sessionId;
-        chat.innerHTML = '';
+        chat.replaceChildren();
       } else if (msg.type === 'error') {
         appendMsg('Error: ' + msg.message, 'error');
         currentAgentBubble = null;
