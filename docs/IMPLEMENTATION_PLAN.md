@@ -37,7 +37,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 | A10 | The SSO role-session name (last segment of the assumed-role ARN) identifies the user, and roles have `bedrock-agentcore:InvokeAgentRuntimeForUser` | Med: IAM may be missing | Dedicated error message (T1.5b); value shown in the raw debug log |
 | A11 | If an agent's events can't be JSON-serialized, the server may send `json.dumps(str(event))`, i.e. a JSON string holding a Python dict repr | Low | `ast.literal_eval` on string events that look like `{...}`; fixture `python_repr.sse` |
 | A12 | `traceId` is sent as the `X-Amzn-Trace-Id` header (confirmed in the boto3 1.42.97 model), so it takes the X-Ray format `Root=1-<8 hex time>-<24 hex>` *(was: W3C 32-hex)* | Med: accepted values not documented | On `ValidationException` retry once without it (T6.28); prefer the `traceId` AgentCore returns |
-| A13 | CloudWatch GenAI Observability lives at `https://<region>.console.aws.amazon.com/cloudwatch/home?region=<region>#gen-ai-observability` | Med: no deep link per trace found | Opens the dashboard only; one constant to fix |
+| A13 | CloudWatch GenAI Observability lives at `https://<region>.console.aws.amazon.com/cloudwatch/home?region=<region>#gen-ai-observability` | Med: no deep link per trace found | Opens the dashboard only; one constant to fix (`tracing.CLOUDWATCH_URL`) |
 | A14 | AgentCore's agent card follows the A2A spec: `skills[].{name,description,examples}`, `capabilities.streaming`, `version` (boto3 returns it as a free-form JSON document) | Low | Missing fields are optional (`cards.summarize`); fixture from a real card when available |
 
 ## 3. Message contracts (Python ⇄ extension ⇄ webview)
@@ -291,11 +291,23 @@ Goal: features specific to AgentCore that generic chat tools don't have, as sell
 
 - [x] **T6.25** Agent Card (Python). New bridge action `get_agent_card {profile, agentArn}` → event `agent_card {agentArn, card}` where `card = {name, description, version, skills: [{name, description, examples}], streaming}` (or `null` plus a note). Only for A2A agents, cached per agent like the agent list. `AccessDenied` (needs `bedrock-agentcore:GetAgentCard`) → `card: null`. The mock returns a card with skills and `streaming: true`.
 - [x] **T6.26** Use the card. The empty state (T6.17) shows the agent's **skills**, with their examples as suggestion chips (falling back to generic chips) and the version. **Automatic A2A streaming:** `agentcore.a2aStreaming` becomes `auto` (default) / `on` / `off`. With `auto`, Python uses `message/stream` when the cached card says `capabilities.streaming`, otherwise `message/send`. *(Resolves Q3 per agent instead of globally.)*
-- [ ] **T6.27** Free server resources: when a session ends (New chat, agent change, protocol switch), Python calls `stop_runtime_session` for every agent that session used (profile, region and ARN recorded at invoke time), in the background. Errors (`AccessDenied`, session already gone) are logged only. Needs `bedrock-agentcore:StopRuntimeSession`. Stop (cancel) does *not* end the session, so the user can continue.
-- [ ] **T6.28** Trace ID per reply: Python generates a trace id for every invoke, sends it as `traceId`, and returns it in `done.meta.traceId`. The reply's actions get **Copy trace ID** and **Open CloudWatch** (GenAI Observability page for the region, opened through the extension). If AgentCore rejects the id format (`ValidationException`), it retries once without it and logs a warning (A12).
-- [ ] **T6.29** Identity at a glance: new bridge action `whoami {profile}` → `identity {profile, account, region, user}` (from `sts:GetCallerIdentity`, already used for `runtimeUserId`; cached). Shown as the profile picker's tooltip and in the Output channel. The mock returns a fake identity.
+- [x] **T6.27** Free server resources: when a session ends (New chat, agent change, protocol switch), Python calls `stop_runtime_session` for every agent that session used (profile, region and ARN recorded at invoke time), in the background. Errors (`AccessDenied`, session already gone) are logged only. Needs `bedrock-agentcore:StopRuntimeSession`. Stop (cancel) does *not* end the session, so the user can continue.
+- [x] **T6.28** Trace ID per reply: Python generates a trace id for every invoke, sends it as `traceId`, and returns it in `done.meta.traceId`. The reply's actions get **Copy trace ID** and **Open CloudWatch** (GenAI Observability page for the region, opened through the extension). If AgentCore rejects the id format (`ValidationException`), it retries once without it and logs a warning (A12).
+- [x] **T6.29** Identity at a glance: new bridge action `whoami {profile}` → `identity {profile, account, region, user}` (from `sts:GetCallerIdentity`, already used for `runtimeUserId`; cached). Shown as the profile picker's tooltip and in the Output channel. The mock returns a fake identity.
 
 *Done when:* with the mock, an A2A agent shows its skills as chips and streams automatically, New chat logs a stopped session, each reply can copy its trace id and open CloudWatch, and the profile tooltip shows the account, region and user. The Python tests cover the card parsing, auto-streaming choice, stop-session bookkeeping and the trace-id fallback.
+
+##### Round 6e: checks on the office laptop (real AgentCore)
+
+Use `agentcore.mock = false`, a real profile, and **AgentCore: Show Logs** (Output channel) open. Branch `phase-6e1-agent-card` covers 1-3; `phase-6e2-sessions-trace-identity` covers all.
+
+1. **Agent Card (A14):** pick an A2A agent. Expected: version, skills and example chips on the welcome card. If not, the log says why (`No permission to read the Agent Card` = missing `bedrock-agentcore:GetAgentCard`; `No Agent Card: ...` = other). To keep the real card as a test fixture, save the output of `aws bedrock-agentcore get-agent-card --agent-runtime-arn <arn>` (needs a recent AWS CLI v2).
+2. **Auto streaming:** with `a2aStreaming = auto`, the footer says `A2A · streamed` only for agents whose card has `capabilities.streaming: true`.
+3. **Old setting values:** set `a2aStreaming` to `true`/`false` in settings.json: still works (`on`/`off`).
+4. **Trace ID (A12):** send a message; hover the reply: **Copy trace ID** gives `1-xxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx`. Watch the log for `AgentCore refused traceId ... retrying without it`: if it appears, the format is wrong (replies still work). Look the id up in CloudWatch → X-Ray traces / Transaction search.
+5. **Open in CloudWatch (A13):** opens the GenAI Observability page in the right region (asks before opening).
+6. **Stop session:** after a chat, click **+** (New chat). Log: `Stopped runtime session ... on <agent>`, or `Could not stop ... (needs bedrock-agentcore:StopRuntimeSession)`.
+7. **Identity:** hover the profile picker: your user, account and region. Also logged as `Profile <name>: ...`.
 
 ### Phase 7: Docs & verification
 

@@ -66,7 +66,9 @@
     insert: 'M8 2.5v7 M5 6.5l3 3 3-3 M3 13h10',
     newFile: 'M4 2.5h5l3 3v8H4z M9 2.5v3h3 M8 8v4 M6 10h4',
     terminal: 'M2.5 3.5h11v9h-11z M5 6.5l2 1.5-2 1.5 M8.5 10h2.5',
-    retry: 'M3 8a5 5 0 1 0 1.5-3.6 M3 2.5v3h3'
+    retry: 'M3 8a5 5 0 1 0 1.5-3.6 M3 2.5v3h3',
+    trace: 'M1.5 8.5h3l1.5-4 3 7 1.5-3h4',
+    external: 'M9 2.5h4.5V7 M13.5 2.5 7.5 8.5 M11.5 9.5v4h-9v-9h4'
   };
 
   function icon(name, size = 14) {

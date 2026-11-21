@@ -134,8 +134,31 @@ def get_runtime_user_id(profile: str) -> str:
     return "mock-user@example.com"
 
 
+def region_for(profile: str, region: Optional[str] = None) -> str:
+    return region or "eu-central-1"
+
+
+def whoami(profile: str, region: Optional[str] = None) -> dict:
+    return {"account": "123456789012", "user": get_runtime_user_id(profile),
+            "arn": f"arn:aws:sts::123456789012:assumed-role/MockRole/{get_runtime_user_id(profile)}",
+            "region": region_for(profile, region)}
+
+
+def stop_runtime_session(profile: str, agent_arn: str, session_id: str, region: Optional[str] = None) -> None:
+    if "demo_unknown" in agent_arn:
+        raise AgentCoreError("AccessDeniedException: mock role lacks bedrock-agentcore:StopRuntimeSession")
+
+
 def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
-           accept: str, user_id: Optional[str] = None, region: Optional[str] = None) -> dict:
+           accept: str, user_id: Optional[str] = None, region: Optional[str] = None,
+           trace_id: Optional[str] = None) -> dict:
+    # Like AgentCore, the reply carries the trace id it was sent
+    response = _invoke(agent_arn, payload)
+    response["traceId"] = trace_id
+    return response
+
+
+def _invoke(agent_arn: str, payload: bytes) -> dict:
     request = json.loads(payload)
     is_a2a = request.get("jsonrpc") == "2.0"
     prompt = _a2a_prompt(request) if is_a2a else request.get("prompt", "")

@@ -59,8 +59,9 @@ class Emitter:
     def done(self, **meta) -> None:
         self._send("done", meta=meta)
 
-    def error(self, message: str) -> None:
-        self._send("error", message=message)
+    def error(self, message: str, **extra) -> None:
+        # extra: traceId/cloudwatchUrl when the agent was reached (tracing.reply_fields)
+        self._send("error", message=message, **extra)
 
     def sso_expired(self, profile: str) -> None:
         self._send("sso_expired", profile=profile)

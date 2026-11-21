@@ -83,6 +83,43 @@ class BridgeSmokeTest(unittest.TestCase):
         self.assertTrue(found[other["agentArn"]]["note"].startswith("No Agent Card"))
         self.assertTrue(any(e["type"] == "log" and e["level"] == "warn" for e in events), "logged")
 
+    def test_replies_carry_trace_ids(self):
+        ok = dict(invoke("T1", "hi"), settings={"region": "eu-west-1"})
+        failed = dict(invoke("T2", "fail"), protocol="A2A")
+        events = self.run_bridge([ok, failed, invoke("T3", "error")])
+        done = self.for_request(events, "T1")[-1]["meta"]
+        self.assertRegex(done["traceId"], r"^1-[0-9a-f]{8}-[0-9a-f]{24}$")
+        self.assertEqual(done["cloudwatchUrl"],
+                         "https://eu-west-1.console.aws.amazon.com/cloudwatch/home?region=eu-west-1#gen-ai-observability")
+        agent_failed = self.for_request(events, "T2")[-1]
+        self.assertEqual(agent_failed["type"], "error")
+        self.assertIn("traceId", agent_failed, "the agent was reached: its trace helps")
+        self.assertIn("region=eu-central-1", agent_failed["cloudwatchUrl"], "profile/mock region when not set")
+        not_reached = self.for_request(events, "T3")[-1]
+        self.assertNotIn("traceId", not_reached, "the call itself failed: no trace")
+
+    def test_new_chat_stops_the_runtime_sessions_it_used(self):
+        sid = "n" * 36
+        first = dict(invoke("N1", "hi"), sessionId=sid, agentArn="arn:x:runtime/demo_http-1")
+        second = dict(invoke("N2", "hi"), sessionId=sid, agentArn="arn:x:runtime/demo_unknown-1")
+        events = self.run_bridge([first, second], [{"action": "reset_session", "sessionId": sid},
+                                                   {"action": "reset_session", "sessionId": "unused" * 6}], pause=1.0)
+        logs = [(e["level"], e["message"]) for e in events if e["type"] == "log"]
+        self.assertIn(("info", "Stopped runtime session nnnnnnnn... on demo_http-1"), logs)
+        self.assertIn(("warn", "Could not stop runtime session nnnnnnnn... on demo_unknown-1: AccessDeniedException: "
+                               "mock role lacks bedrock-agentcore:StopRuntimeSession "
+                               "(needs bedrock-agentcore:StopRuntimeSession)"), logs)
+        self.assertEqual(len(logs), 2, "an unused session stops nothing")
+
+    def test_whoami(self):
+        events = self.run_bridge([{"action": "whoami", "profile": "dev", "settings": {"region": "eu-west-1"}}])
+        identity = [e for e in events if e["type"] == "identity"][0]
+        self.assertEqual(identity["profile"], "dev")
+        self.assertEqual(identity["account"], "123456789012")
+        self.assertEqual(identity["user"], "mock-user@example.com")
+        self.assertEqual(identity["region"], "eu-west-1")
+        self.assertTrue(any(e["type"] == "log" and e["message"].startswith("Profile dev: mock-user") for e in events))
+
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)
         s = self.for_request(events, "S")

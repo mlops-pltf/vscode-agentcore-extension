@@ -2,14 +2,15 @@
 
 Flow for one request:
   pick backend (AWS or mock) -> pick protocol -> build payload -> invoke
-  -> protocol turns response events into chunk/status -> done (or error)
+  (with a new trace id) -> protocol turns response events into chunk/status
+  -> done (or error), both carrying the trace id once the agent was reached
 """
 import threading
 import time
 import uuid
 from typing import Dict, Tuple
 
-from agentcore import protocols, sessions
+from agentcore import protocols, sessions, tracing
 from agentcore.backends import backend_for, is_mock
 from agentcore.cancel import CancelToken
 from agentcore.errors import AgentCoreError, SsoExpired
@@ -52,6 +53,7 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
     emitter = Emitter(request_id, debug_raw=settings.get("debugRaw", False))
     backend = backend_for(settings)
     started = time.monotonic()
+    trace = {}  # traceId/cloudwatchUrl once the agent has answered
     try:
         protocol = protocols.get(cmd.get("protocol") or "HTTP")
         if protocol is None:
@@ -64,13 +66,17 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
                             settings=settings, session_state=sessions.get(session_id),
                             profile=profile, agent_arn=cmd["agentArn"])
 
+        region = settings.get("region") or None
         user_id = backend.get_runtime_user_id(profile)
         raw = backend.invoke(profile, cmd["agentArn"], session_id,
                              protocol.build_payload(ctx), protocol.accept, user_id,
-                             region=settings.get("region") or None)
+                             region=region, trace_id=tracing.new_trace_id())
+        # The runtime session now exists; ending the chat stops it (T6.27)
+        sessions.record_use(session_id, sessions.RuntimeUse(is_mock(settings), profile, region, cmd["agentArn"]))
+        trace = tracing.reply_fields(raw.get("traceId"), backend.region_for(profile, region))
         meta = protocol.handle(AgentResponse(raw, emitter, token), emitter, ctx)
         # These keys belong to the request as a whole; a protocol's meta can't override them
-        emitter.done(**{**meta,
+        emitter.done(**{**meta, **trace,
                         "state": "cancelled" if token.cancelled else "completed",
                         "protocol": protocol.name,
                         "mock": is_mock(settings),
@@ -78,12 +84,12 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
     except SsoExpired as e:
         emitter.sso_expired(e.profile)
     except AgentCoreError as e:
-        emitter.error(str(e))
+        emitter.error(str(e), **trace)
     except Exception as e:
         if token.cancelled:
-            emitter.done(state="cancelled")
+            emitter.done(state="cancelled", **trace)
         else:
-            emitter.error(f"{type(e).__name__}: {e}")
+            emitter.error(f"{type(e).__name__}: {e}", **trace)
     finally:
         with _active_lock:
             _active.pop(request_id, None)

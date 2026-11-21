@@ -9,9 +9,9 @@ import sys
 import threading
 
 from agentcore import agents, cards, invocations, sessions
-from agentcore.backends import backend_for
+from agentcore.backends import backend_for, backend_of
 from agentcore.errors import AgentCoreError, SsoExpired
-from agentcore.events import claim_stdout, send
+from agentcore.events import claim_stdout, log, send
 
 
 def list_profiles(cmd: dict):
@@ -72,7 +72,44 @@ def cancel(cmd: dict):
 
 
 def reset_session(cmd: dict):
-    sessions.reset(cmd.get("sessionId"))
+    session_id = cmd.get("sessionId")
+    used = sessions.reset(session_id)
+    if used:
+        _in_background(lambda _: _stop_runtime_sessions(session_id, used), cmd)
+
+
+def _stop_runtime_sessions(session_id: str, used) -> None:
+    """Free the ended chat's sessions on AgentCore (T6.27). Failures are logged only:
+    the session times out on its own anyway."""
+    for use in used:
+        agent = use.agent_arn.rsplit("/", 1)[-1]
+        try:
+            backend_of(use.mock).stop_runtime_session(use.profile, use.agent_arn, session_id, region=use.region)
+            log(f"Stopped runtime session {session_id[:8]}... on {agent}")
+        except SsoExpired:
+            log(f"Could not stop runtime session {session_id[:8]}... on {agent}: SSO session expired", "warn")
+        except Exception as e:
+            hint = " (needs bedrock-agentcore:StopRuntimeSession)" if "AccessDenied" in str(e) else ""
+            log(f"Could not stop runtime session {session_id[:8]}... on {agent}: {e}{hint}", "warn")
+
+
+def whoami(cmd: dict):
+    _in_background(_whoami, cmd)
+
+
+def _whoami(cmd: dict):
+    profile = cmd["profile"]
+    settings = cmd.get("settings") or {}
+    try:
+        identity = backend_for(settings).whoami(profile, region=settings.get("region") or None)
+    except SsoExpired:
+        send({"type": "identity", "profile": profile, "error": "SSO session expired"})
+        return
+    except Exception as e:
+        send({"type": "identity", "profile": profile, "error": str(e)})
+        return
+    log(f"Profile {profile}: {identity['user']}, account {identity['account']}, region {identity['region']}")
+    send({"type": "identity", "profile": profile, **identity})
 
 
 HANDLERS = {
@@ -82,6 +119,7 @@ HANDLERS = {
     "invoke_agent": invoke_agent,
     "cancel": cancel,
     "reset_session": reset_session,
+    "whoami": whoami,
 }
 
 

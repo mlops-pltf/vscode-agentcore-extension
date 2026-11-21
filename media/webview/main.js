@@ -85,6 +85,14 @@
 
   // ---------- profiles and agents ----------
 
+  // Who the profile signs in as, shown as the profile picker's tooltip
+  function loadIdentity() {
+    const profile = profileSelect.value;
+    if (!profile) return;
+    profileSelect.title = 'AWS profile';
+    vscode.postMessage({ action: 'whoami', profile });
+  }
+
   // refresh = true skips the agent-list cache in Python
   function loadAgents(refresh) {
     const profile = profileSelect.value;
@@ -270,7 +278,14 @@
   const handlers = {
     profiles(msg) {
       setOptions(profileSelect, msg.data.map((p) => ({ value: p, label: p })));
+      loadIdentity();
       loadAgents();
+    },
+    identity(msg) {
+      if (msg.profile !== profileSelect.value) return;
+      profileSelect.title = msg.error
+        ? `AWS profile ${msg.profile}: ${msg.error}`
+        : `${msg.user}\nAccount ${msg.account} · ${msg.region}`;
     },
     agents(msg) {
       // Ignore a slow reply for a profile the user has already switched away from
@@ -297,7 +312,7 @@
     },
     done(msg) {
       const meta = msg.meta || {};
-      const reply = finish(msg.requestId, { footer: chatView.footerText(meta) });
+      const reply = finish(msg.requestId, { footer: chatView.footerText(meta), trace: meta });
       if (!reply) return;
       const waiting = meta.taskState === 'input-required' || meta.taskState === 'auth-required';
       // Keep "Agent is waiting for your input"; drop progress lines like "Thinking..."
@@ -306,7 +321,7 @@
     },
     error(msg) {
       if (requests.has(msg.requestId)) {
-        finish(msg.requestId, { error: 'Error: ' + msg.message });
+        finish(msg.requestId, { error: 'Error: ' + msg.message, trace: msg });
       } else {
         chatView.appendMessage(chat, 'Error: ' + msg.message, 'error');
       }
@@ -319,7 +334,10 @@
       const changed = msg.data.mock !== currentSettings.mock || msg.data.region !== currentSettings.region;
       currentSettings = msg.data;
       showSettings();
-      if (changed) loadAgents(true);
+      if (changed) {
+        loadIdentity();
+        loadAgents(true);
+      }
     }
   };
 
@@ -330,7 +348,10 @@
 
   // ---------- wiring ----------
 
-  profileSelect.addEventListener('change', () => loadAgents(false));
+  profileSelect.addEventListener('change', () => {
+    loadIdentity();
+    loadAgents(false);
+  });
   agentSelect.addEventListener('change', onAgentChanged);
   $('refreshBtn').addEventListener('click', () => loadAgents(true));
   $('ssoLoginBtn').addEventListener('click', () => {

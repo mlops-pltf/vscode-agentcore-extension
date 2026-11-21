@@ -133,20 +133,20 @@
   }
 
   // Swap a button's icon for a tick for a moment after copying
-  function showCopied(button) {
+  function showCopied(button, iconName) {
     const label = button.getAttribute('aria-label');
     button.replaceChildren(icon('check'));
     button.setAttribute('aria-label', 'Copied');
     setTimeout(() => {
-      button.replaceChildren(icon('copy'));
+      button.replaceChildren(icon(iconName));
       button.setAttribute('aria-label', label);
     }, 1500);
   }
 
-  function copyButton(label, getText) {
-    const button = iconButton('copy', label, () => {
+  function copyButton(label, getText, iconName = 'copy') {
+    const button = iconButton(iconName, label, () => {
       options.onEditor('copy', { text: getText() });
-      showCopied(button);
+      showCopied(button, iconName);
     });
     return button;
   }
@@ -218,8 +218,9 @@
   }
 
   // End a reply: render the final text, then add an error line, the footer and
-  // the actions (Copy when there is text; Retry when it failed and onRetry is given)
-  function finishReply(reply, { footer, error, onRetry } = {}) {
+  // the actions: Copy when there is text; Copy trace ID and Open in CloudWatch
+  // when trace = {traceId, cloudwatchUrl} is known; Retry when it failed
+  function finishReply(reply, { footer, error, trace, onRetry } = {}) {
     stopTimer(reply);
     if (reply.received) {
       renderReply(reply);
@@ -232,6 +233,13 @@
       reply.footer.hidden = false;
     }
     if (reply.received) reply.actions.appendChild(copyButton('Copy reply', () => reply.markdown));
+    if (trace && trace.traceId) {
+      reply.actions.appendChild(copyButton(`Copy trace ID (${trace.traceId})`, () => trace.traceId, 'trace'));
+      if (trace.cloudwatchUrl) {
+        reply.actions.appendChild(iconButton('external', 'Open in CloudWatch (GenAI Observability)',
+          () => options.onEditor('openLink', { url: trace.cloudwatchUrl })));
+      }
+    }
     if (error && onRetry) {
       const retry = el('button', 'retry secondary');
       retry.append(icon('retry', 12), document.createTextNode('Retry'));

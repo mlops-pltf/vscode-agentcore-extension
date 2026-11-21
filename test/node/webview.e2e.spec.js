@@ -485,3 +485,56 @@ test('A2A auto streaming follows the Agent Card', async (t) => {
   await until(p.idle);
   assert.match(p.part(p.last(), 'footer').textContent, /^A2A · \d+\.\ds · completed$/, 'no card: message/send');
 });
+
+test('trace ID: copy it or open CloudWatch from the reply; also on agent failures', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const editorOps = () => p.sent.filter((m) => m.type === 'editor');
+  const labels = () => [...p.last().querySelectorAll('.reply-actions button')].map((b) => b.getAttribute('aria-label') || b.textContent);
+
+  p.type('hi');
+  await until(p.idle);
+  const [copy, trace, cloudwatch] = p.last().querySelectorAll('.reply-actions button');
+  assert.strictEqual(copy.getAttribute('aria-label'), 'Copy reply');
+  const traceId = trace.getAttribute('aria-label').match(/^Copy trace ID \((1-[0-9a-f]{8}-[0-9a-f]{24})\)$/)[1];
+  trace.click();
+  assert.deepStrictEqual(plain(editorOps().pop()), { type: 'editor', op: 'copy', text: traceId });
+  assert.strictEqual(cloudwatch.getAttribute('aria-label'), 'Open in CloudWatch (GenAI Observability)');
+  cloudwatch.click();
+  assert.deepStrictEqual(plain(editorOps().pop()), {
+    type: 'editor', op: 'openLink',
+    url: 'https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#gen-ai-observability'
+  });
+
+  p.type('please fail');  // the A2A task fails: the agent was reached
+  await until(p.idle);
+  assert.ok(p.part(p.last(), 'error-text'));
+  assert.ok(labels()[0].startsWith('Copy trace ID'), 'trace offered on a failed reply');
+  assert.ok(p.last().querySelector('.retry'));
+
+  p.type('error');  // the call itself failed: no trace
+  await until(p.idle);
+  assert.ok(!labels().some((l) => l.startsWith('Copy trace ID')));
+});
+
+test('profile tooltip shows who you are signed in as', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const select = p.$('profileSelect');
+  assert.ok(await until(() => select.title.startsWith('mock-user')));
+  assert.strictEqual(select.title, 'mock-user@example.com\nAccount 123456789012 · eu-central-1');
+  const whoami = () => p.sent.filter((m) => m.action === 'whoami');
+  assert.strictEqual(whoami().length, 1);
+
+  // Region setting changed: asked again, shows the new region
+  p.post({ type: 'settings', data: { ...MOCK_SETTINGS, region: 'us-west-2' } });
+  assert.strictEqual(whoami().length, 2);
+  // (the jsdom harness keeps sending the original settings to Python, so only the request is checked)
+
+  p.post({ type: 'identity', profile: select.value, error: 'SSO session expired' });
+  assert.strictEqual(select.title, `AWS profile ${select.value}: SSO session expired`);
+  p.post({ type: 'identity', profile: 'some-other-profile', account: '9', region: 'x', user: 'stale' });
+  assert.strictEqual(select.title, `AWS profile ${select.value}: SSO session expired`, 'answers for other profiles are ignored');
+});
