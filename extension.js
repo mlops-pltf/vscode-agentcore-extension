@@ -82,30 +82,43 @@ class AgentCoreViewProvider {
       isWin ? 'python.exe' : 'python'
     );
 
-    if (fs.existsSync(managedPython)) {
+    // Re-install when requirements.txt changes (hash stored inside the venv)
+    const reqPath = path.join(this._extensionUri.fsPath, 'python', 'requirements.txt');
+    const reqHash = crypto.createHash('sha256').update(fs.readFileSync(reqPath)).digest('hex');
+    const hashFile = path.join(managedVenvDir, '.req-hash');
+    const venvExists = fs.existsSync(managedPython);
+
+    if (venvExists && fs.existsSync(hashFile) && fs.readFileSync(hashFile, 'utf8') === reqHash) {
       return managedPython;
     }
 
     const basePython = isWin ? 'python' : 'python3';
-    const reqPath = path.join(this._extensionUri.fsPath, 'python', 'requirements.txt');
+    const steps = [];
+    if (!venvExists) {
+      steps.push(`"${basePython}" -m venv "${managedVenvDir}"`);
+      steps.push(`"${managedPython}" -m pip install --upgrade pip -q`);
+    }
+    steps.push(`"${managedPython}" -m pip install -r "${reqPath}" -q`);
 
     return await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'AgentCore Chat: Setting up Python environment (first-time setup)...',
+        title: venvExists
+          ? 'AgentCore Chat: Updating Python dependencies...'
+          : 'AgentCore Chat: Setting up Python environment (first-time setup)...',
         cancellable: true
       },
       () =>
         new Promise((resolve, reject) => {
           fs.mkdirSync(storageDir, { recursive: true });
-          const cmd = `"${basePython}" -m venv "${managedVenvDir}" && "${managedPython}" -m pip install --upgrade pip -q && "${managedPython}" -m pip install -r "${reqPath}" -q`;
-          cp.exec(cmd, (err, _stdout, stderr) => {
+          cp.exec(steps.join(' && '), (err, _stdout, stderr) => {
             if (err) {
               vscode.window.showErrorMessage(
                 `AgentCore Chat setup failed (Python 3.9+ required): ${stderr || err.message}`
               );
               reject(err);
             } else {
+              fs.writeFileSync(hashFile, reqHash);
               resolve(managedPython);
             }
           });
