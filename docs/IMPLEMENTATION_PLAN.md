@@ -311,24 +311,30 @@ Use `agentcore.mock = false`, a real profile, and **AgentCore: Show Logs** (Outp
 
 ### Phase 7: Docs & verification
 
-- [ ] **T7.1** README: required IAM permissions (`InvokeAgentRuntime`, `InvokeAgentRuntimeForUser`, `ListAgentRuntimes`, `GetAgentRuntime`, and the optional `GetAgentCard`, `StopRuntimeSession`), settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture, and a tip on where the chat lives (right, as a tab next to Copilot Chat), moving it to the left (right-click → Move View, or drag) and back (right-click → Reset Location).
-- [ ] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
+- [x] **T7.1** README: required IAM permissions (`InvokeAgentRuntime`, `InvokeAgentRuntimeForUser`, `ListAgentRuntimes`, `GetAgentRuntime`, and the optional `GetAgentCard`, `StopRuntimeSession`), settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture, and a tip on where the chat lives (right, as a tab next to Copilot Chat), moving it to the left (right-click → Move View, or drag) and back (right-click → Reset Location).
+- [x] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
 - [ ] **T7.3** Manual test checklist (below) run in the Extension Development Host with `agentcore.mock=true`.
-- [ ] **T7.4** CHANGELOG entry.
-- [ ] **T7.5** Add `python/tests/**`, `python/tools/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`.
+- [x] **T7.4** CHANGELOG entry.
+- [x] **T7.5** Add `python/tests/**`, `python/tools/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`. *(Also `docs/**`, `*.vsix`, `**/*.pyc`; checked with `vsce ls`.)*
+- [x] **T7.6** *(added 2026-11-21)* Fix ESLint: install the missing `globals` dev dependency, browser globals for `media/webview`, CommonJS for the rest. `npm run lint` is clean, so `npm test` (which lints first) works again.
 
 ## 5. Manual test checklist (mock mode)
 
-1. Open the panel → the mock profile list loads, with the MOCK badge visible.
-2. Pick `demo-http-strands` → the toggle switches to HTTP (auto). Send "hi" → streamed text, no doubled tokens, footer shows HTTP.
-3. Send "json please" → single JSON-response path.
-4. Pick `demo-a2a` → the toggle switches to A2A. Send "hi" → task artifact text; send a second message → the raw log shows the same `contextId`.
-5. Turn on `a2aStreaming` → status lines appear, then streamed artifact text.
-6. Send "slow" and press Stop → the bubble ends with "cancelled" and you can send again right away.
-7. Send two prompts back to back → each reply stays in its own bubble.
-8. Send "input" on A2A → the "waiting for your input" status shows and the next reply continues the same task.
-9. Send "error" → a red error, and the UI recovers.
-10. Kill the Python process (`pkill -f bridge.py`) → "Reconnecting…", then it works again.
+Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*
+
+1. **Panel:** the chat opens in the Secondary Side Bar with the MOCK badge; the profile tooltip shows `mock-user@example.com`, account and region. The agent list shows 3 agents and "1 non-chat agent (MCP/AGUI) hidden".
+2. **A2A welcome:** `demo-a2a` is selected with the toggle on A2A (dot). The welcome card shows `A2A agent · v1.2.0`, two skills, and three example chips; a chip fills the composer without sending.
+3. **HTTP:** pick `demo-http-strands` (generic chips). Send `hi`: dots and "Thinking", then streamed text, no doubled words, footer `HTTP · …s · completed`. Send `json please`: one-piece answer.
+4. **A2A:** pick `demo-a2a`, send `hi`: footer `A2A · streamed · …` (auto streaming from the card). Send a second message: the raw log (`debugRawResponses` on) shows the same `contextId`. Set `a2aStreaming = off`: the footer loses "streamed".
+5. **Markdown:** send `markdown please`: formatted while streaming; code-block Copy / Insert at Cursor / Open in New File; Insert into Terminal on the `bash` block puts both lines at the prompt without running them; the link opens only after VS Code asks.
+6. **Reply actions:** hover a reply: Copy reply (raw Markdown), Copy trace ID (`1-…`), Open in CloudWatch (asks first).
+7. **Stop and timer:** send `slow`: "Thinking · 1s, 2s"; press Esc: the reply ends "cancelled" and you can send at once. On A2A with streaming off, `slow` waits 3s and then answers in one piece.
+8. **Two prompts back to back:** each reply stays in its own bubble.
+9. **Input required:** on A2A send `need input`: the question and "waiting for your input"; the next message continues the same task.
+10. **Errors and Retry:** send `error`: red error with Retry; Retry replaces it in place. Send `please fail` on A2A: error with Retry and a trace ID.
+11. **Scrolling and ↑:** while a long reply streams, scroll up: the view stays and "Jump to latest" appears. In the empty composer, ↑ recalls your last prompt.
+12. **New chat:** click +: the log shows `Stopped runtime session … on demo_…` (and a permission warning if you used `demo-unknown`).
+13. **Backend restart:** `pkill -f bridge.py`: "Reconnecting…", then it works again; a reply in progress offers Retry.
 
 ## 6. Open questions
 

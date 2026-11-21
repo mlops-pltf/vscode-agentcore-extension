@@ -1,6 +1,7 @@
 .vscode/**
 .vscode-test/**
 test/**
+docs/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -8,4 +9,9 @@ vsc-extension-quickstart.md
 **/*.map
 **/eslint.config.mjs
 **/.vscode-test.*
+*.vsix
 .venv/**
+python/tests/**
+python/tools/**
+**/__pycache__/**
+**/*.pyc
