@@ -88,7 +88,10 @@ class AgentCoreViewProvider {
 
   async resolveWebviewView(webviewView) {
     this._view = webviewView;
-    webviewView.webview.options = { enableScripts: true };
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media', 'webview')]
+    };
     webviewView.webview.html = this._getHtml(webviewView.webview);
 
     // Listen before starting Python so the webview's first messages aren't lost
@@ -293,32 +296,17 @@ class AgentCoreViewProvider {
   }
 
   _getHtml(webview) {
-    const initialSessionId = crypto.randomUUID();
     const nonce = crypto.randomBytes(16).toString('base64');
-    // Escape "<" so a setting value can't close the <script> tag
-    const settingsJson = JSON.stringify(this._settings()).replace(/</g, '\\u003c');
+    const asset = (file) => webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview', file));
+    // Starting values for main.js; "<" is escaped so a value can't close the <script> tag
+    const init = JSON.stringify({ sessionId: crypto.randomUUID(), settings: this._settings() }).replace(/</g, '\\u003c');
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>
-  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 10px; display: flex; flex-direction: column; height: 95vh; margin: 0; }
-  .controls { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-panel-border); }
-  .row { display: flex; gap: 6px; align-items: center; }
-  select, button, textarea { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 5px; border-radius: 3px; font-family: inherit; }
-  select { flex: 1; }
-  button { cursor: pointer; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 10px; }
-  button:hover { background: var(--vscode-button-hoverBackground); }
-  #ssoBanner { display: none; background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); padding: 8px; border-radius: 4px; margin-top: 6px; font-size: 12px; }
-  #chat { flex: 1; overflow-y: auto; padding: 10px 0; display: flex; flex-direction: column; gap: 10px; }
-  .msg { padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.4; }
-  .user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; max-width: 85%; }
-  .agent { background: var(--vscode-editor-inactiveSelectionBackground); align-self: flex-start; max-width: 90%; }
-  .error { color: var(--vscode-errorForeground); font-size: 12px; }
-  .input-box { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--vscode-panel-border); }
-  textarea { flex: 1; resize: none; height: 50px; }
-</style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<link rel="stylesheet" href="${asset('main.css')}">
 </head>
 <body>
   <div class="controls">
@@ -332,7 +320,7 @@ class AgentCoreViewProvider {
     </div>
     <div id="ssoBanner">
       <span>SSO token expired for this profile.</span>
-      <button id="ssoLoginBtn" style="margin-top:5px; width:100%;">Run aws sso login</button>
+      <button id="ssoLoginBtn">Run aws sso login</button>
     </div>
   </div>
 
@@ -343,127 +331,8 @@ class AgentCoreViewProvider {
     <button id="sendBtn">Send</button>
   </div>
 
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    let sessionId = "${initialSessionId}";
-    let currentSettings = ${settingsJson};
-    let currentAgentBubble = null;
-
-    const profileSelect = document.getElementById('profileSelect');
-    const agentSelect = document.getElementById('agentSelect');
-    const ssoBanner = document.getElementById('ssoBanner');
-    const chat = document.getElementById('chat');
-    const promptInput = document.getElementById('promptInput');
-
-    // Fill a <select> safely: text goes through textContent, never parsed as HTML
-    function setOptions(select, items) {
-      select.replaceChildren(...items.map(({ value, label, title }) => {
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = label;
-        if (title) opt.title = title;
-        return opt;
-      }));
-    }
-
-    function setPlaceholder(select, label) {
-      setOptions(select, [{ value: '', label }]);
-    }
-
-    vscode.postMessage({ action: 'list_profiles' });
-
-    // refresh = true skips the agent-list cache in Python
-    function loadAgents(refresh) {
-      const profile = profileSelect.value;
-      if (!profile) return;
-      ssoBanner.style.display = 'none';
-      setPlaceholder(agentSelect, 'Loading agents...');
-      vscode.postMessage({ action: 'list_agents', profile, refresh: refresh === true });
-    }
-
-    profileSelect.addEventListener('change', () => loadAgents(false));
-    document.getElementById('refreshBtn').addEventListener('click', () => loadAgents(true));
-    document.getElementById('ssoLoginBtn').addEventListener('click', () => {
-      vscode.postMessage({ type: 'ssoLogin', profile: profileSelect.value });
-    });
-    document.getElementById('newChatBtn').addEventListener('click', () => {
-      vscode.postMessage({ type: 'newSession' });
-    });
-
-    function sendMessage() {
-      const prompt = promptInput.value.trim();
-      const agentArn = agentSelect.value;
-      const profile = profileSelect.value;
-      if (!prompt || !agentArn) return;
-
-      appendMsg(prompt, 'user');
-      promptInput.value = '';
-      currentAgentBubble = appendMsg('...', 'agent');
-
-      vscode.postMessage({
-        action: 'invoke_agent',
-        profile,
-        agentArn,
-        prompt,
-        sessionId
-      });
-    }
-
-    document.getElementById('sendBtn').addEventListener('click', sendMessage);
-    promptInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
-    function appendMsg(text, cls) {
-      const div = document.createElement('div');
-      div.className = 'msg ' + cls;
-      div.textContent = text;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-      return div;
-    }
-
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'profiles') {
-        setOptions(profileSelect, msg.data.map(p => ({ value: p, label: p })));
-        loadAgents();
-      } else if (msg.type === 'agents') {
-        // Ignore a slow reply for a profile the user has already switched away from
-        if (msg.profile && msg.profile !== profileSelect.value) return;
-        if (!msg.data.length) {
-          setPlaceholder(agentSelect, 'No agents found');
-        } else {
-          setOptions(agentSelect, msg.data.map(a => ({ value: a.arn, label: a.name, title: a.description })));
-        }
-      } else if (msg.type === 'sso_expired') {
-        ssoBanner.style.display = 'block';
-        setPlaceholder(agentSelect, 'SSO Login Required');
-      } else if (msg.type === 'chunk') {
-        if (currentAgentBubble) {
-          if (currentAgentBubble.textContent === '...') currentAgentBubble.textContent = '';
-          currentAgentBubble.textContent += msg.text;
-          chat.scrollTop = chat.scrollHeight;
-        }
-      } else if (msg.type === 'done') {
-        currentAgentBubble = null;
-      } else if (msg.type === 'settings') {
-        // Mock mode or region decides which agents exist, so reload the list
-        const changed = msg.data.mock !== currentSettings.mock || msg.data.region !== currentSettings.region;
-        currentSettings = msg.data;
-        if (changed) loadAgents(true);
-      } else if (msg.type === 'sessionReset') {
-        sessionId = msg.sessionId;
-        chat.replaceChildren();
-      } else if (msg.type === 'error') {
-        appendMsg('Error: ' + msg.message, 'error');
-        currentAgentBubble = null;
-      }
-    });
-  </script>
+  <script nonce="${nonce}" id="init" type="application/json">${init}</script>
+  <script nonce="${nonce}" src="${asset('main.js')}"></script>
 </body>
 </html>`;
   }
