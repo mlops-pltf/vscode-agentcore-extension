@@ -40,6 +40,8 @@ def fixture_response(relpath: str, content_type: str = None) -> dict:
 
 
 def context(prompt: str = "hi", session_state: dict = None, **settings) -> InvokeContext:
+    # A fixed A2A method unless a test asks otherwise ("auto" would look up an Agent Card)
+    settings.setdefault("a2aStreaming", "off")
     return InvokeContext(request_id="test", prompt=prompt, session_id="s" * 36,
                          settings=settings, session_state={} if session_state is None else session_state)
 

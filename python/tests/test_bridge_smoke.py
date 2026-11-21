@@ -72,6 +72,17 @@ class BridgeSmokeTest(unittest.TestCase):
         self.assertEqual([e["type"] for e in x], ["done"])
         self.assertEqual(x[-1]["meta"]["state"], "cancelled")
 
+    def test_agent_card_action(self):
+        a2a = {"action": "get_agent_card", "profile": "dev", "agentArn": "arn:x:runtime/demo_a2a-1"}
+        other = dict(a2a, agentArn="arn:x:runtime/demo_http-1")
+        events = self.run_bridge([a2a, other])
+        found = {e["agentArn"]: e for e in events if e["type"] == "agent_card"}
+        self.assertEqual(found[a2a["agentArn"]]["profile"], "dev")
+        self.assertEqual(found[a2a["agentArn"]]["card"]["skills"][0]["name"], "Deploy services")
+        self.assertIsNone(found[other["agentArn"]]["card"])
+        self.assertTrue(found[other["agentArn"]]["note"].startswith("No Agent Card"))
+        self.assertTrue(any(e["type"] == "log" and e["level"] == "warn" for e in events), "logged")
+
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)
         s = self.for_request(events, "S")

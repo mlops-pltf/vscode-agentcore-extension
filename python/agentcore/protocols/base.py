@@ -14,6 +14,8 @@ class InvokeContext:
     # Survives across turns of one chat session, e.g. the A2A contextId.
     # Each protocol stores what it needs; cleared by reset_session.
     session_state: dict
+    profile: str = ""
+    agent_arn: str = ""
 
 
 class AgentProtocol:

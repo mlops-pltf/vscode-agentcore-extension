@@ -8,7 +8,7 @@ import json
 import sys
 import threading
 
-from agentcore import agents, invocations, sessions
+from agentcore import agents, cards, invocations, sessions
 from agentcore.backends import backend_for
 from agentcore.errors import AgentCoreError, SsoExpired
 from agentcore.events import claim_stdout, send
@@ -22,17 +22,24 @@ def list_profiles(cmd: dict):
 _background = []
 
 
-def list_agents(cmd: dict):
-    # Listing makes one API call per agent, so keep it off the stdin loop
-    thread = threading.Thread(target=_list_agents, args=(cmd,), daemon=True)
+def _in_background(target, cmd: dict) -> None:
+    # AWS calls run off the stdin loop, so cancel and other requests aren't held up
+    thread = threading.Thread(target=target, args=(cmd,), daemon=True)
     _background[:] = [t for t in _background if t.is_alive()]
     _background.append(thread)
     thread.start()
 
 
+def list_agents(cmd: dict):
+    # Listing makes one API call per agent
+    _in_background(_list_agents, cmd)
+
+
 def _list_agents(cmd: dict):
     profile = cmd["profile"]
     try:
+        if cmd.get("refresh"):
+            cards.clear()
         result = agents.list_for(profile, cmd.get("settings") or {}, refresh=bool(cmd.get("refresh")))
         send({"type": "agents", "profile": profile, **result})
     except SsoExpired:
@@ -41,6 +48,19 @@ def _list_agents(cmd: dict):
         send({"type": "error", "message": str(e)})
     except Exception as e:
         send({"type": "error", "message": f"Could not list agents: {type(e).__name__}: {e}"})
+
+
+def get_agent_card(cmd: dict):
+    _in_background(_get_agent_card, cmd)
+
+
+def _get_agent_card(cmd: dict):
+    profile, agent_arn = cmd["profile"], cmd["agentArn"]
+    try:
+        result = cards.get_for(profile, agent_arn, cmd.get("settings") or {})
+    except Exception as e:
+        result = {"card": None, "note": f"Could not read the Agent Card: {type(e).__name__}: {e}"}
+    send({"type": "agent_card", "profile": profile, "agentArn": agent_arn, **result})
 
 
 def invoke_agent(cmd: dict):
@@ -58,6 +78,7 @@ def reset_session(cmd: dict):
 HANDLERS = {
     "list_profiles": list_profiles,
     "list_agents": list_agents,
+    "get_agent_card": get_agent_card,
     "invoke_agent": invoke_agent,
     "cancel": cancel,
     "reset_session": reset_session,

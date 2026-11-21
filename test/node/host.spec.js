@@ -46,6 +46,22 @@ test('settings reach Python; raw lines go to the log only', async (t) => {
   assert.strictEqual(posted((m) => m.type === 'raw').length, 0, 'raw lines never reach the webview');
 });
 
+test("Python's log lines go to the Output channel only; old a2aStreaming values still work", async (t) => {
+  const { ext, state, view, posted } = await started();
+  t.after(() => ext.deactivate());
+
+  view.send({ action: 'get_agent_card', profile: 'dev', agentArn: 'arn:x:runtime/demo_http-1' });
+  assert.ok(await until(() => posted((m) => m.type === 'agent_card').length === 1));
+  assert.ok(state.logs.some((l) => l.startsWith('warn: No Agent Card: ResourceNotFoundException')), 'logged as a warning');
+  assert.strictEqual(posted((m) => m.type === 'log').length, 0, 'never posted to the panel');
+
+  const { readSettings } = require('../../src/settings');
+  for (const [stored, expected] of [[undefined, 'auto'], ['auto', 'auto'], ['on', 'on'], ['off', 'off'], [true, 'on'], [false, 'off'], ['bad', 'auto']]) {
+    state.config.a2aStreaming = stored;
+    assert.strictEqual(readSettings().a2aStreaming, expected, String(stored));
+  }
+});
+
 test('settings changes: webview told; pythonPath change restarts Python', async (t) => {
   const { ext, state, provider, posted } = await started();
   t.after(() => ext.deactivate());

@@ -1,7 +1,8 @@
 """Pick the real AWS backend or the mock, based on the request's settings.
 
 aws.py and mock_runtime.py expose the same functions:
-  list_profiles(), get_runtime_user_id(profile), invoke(...)
+  list_profiles(), list_agents(...), get_agent_card(...),
+  get_runtime_user_id(profile), invoke(...)
 """
 from agentcore import aws, mock_runtime
 

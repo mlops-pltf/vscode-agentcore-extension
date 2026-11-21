@@ -1,7 +1,8 @@
 """A2A-protocol agents: JSON-RPC 2.0 request and reply interpretation.
 
-Request (A5): a JSON-RPC call, "message/send" or (with the a2aStreaming
-setting) "message/stream", carrying one user Message.
+Request (A5): a JSON-RPC call, "message/send" or "message/stream", carrying
+one user Message. agentcore.a2aStreaming picks the method: "on", "off", or
+"auto" (default), which streams when the Agent Card says it can (cards.py).
 
 Reply: one JSON-RPC envelope (send) or an SSE stream of envelopes (stream),
 read by response.py. Each envelope's "result" is one of (A7):
@@ -19,6 +20,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
+from agentcore import cards
 from agentcore.errors import AgentCoreError
 from agentcore.events import Emitter
 from agentcore.protocols.base import AgentProtocol, InvokeContext
@@ -47,7 +49,7 @@ class A2aProtocol(AgentProtocol):
         if ctx.session_state.get("pendingTaskId"):
             message["taskId"] = ctx.session_state["pendingTaskId"]
 
-        method = METHOD_STREAM if ctx.settings.get("a2aStreaming") else METHOD_SEND
+        method = METHOD_STREAM if cards.use_streaming(ctx.profile, ctx.agent_arn, ctx.settings) else METHOD_SEND
         request = {"jsonrpc": "2.0", "id": ctx.request_id, "method": method,
                    "params": {"message": message}}
         return json.dumps(request).encode("utf-8")
@@ -63,7 +65,8 @@ class A2aProtocol(AgentProtocol):
         if turn.state in WAITING_STATES:
             emitter.status("Agent is waiting for your input")
 
-        meta = {"contentType": response.content_type, "taskState": turn.state}
+        meta = {"contentType": response.content_type, "taskState": turn.state,
+                "streamed": response.content_type == "text/event-stream"}
         if turn.context_id:
             meta["contextId"] = turn.context_id
         if turn.task_id:

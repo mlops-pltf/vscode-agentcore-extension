@@ -51,9 +51,15 @@
           "markdownDescription": "AWS region for AgentCore. Defaults to `eu-central-1`; clear it to use the region from your AWS profile instead."
         },
         "agentcore.a2aStreaming": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "For **A2A** agents, use `message/stream` (live status and streamed text) instead of `message/send`. Only enable if your A2A agents support streaming."
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "enumDescriptions": [
+            "Stream when the agent's Agent Card says it supports streaming, otherwise send",
+            "Always use message/stream",
+            "Always use message/send"
+          ],
+          "default": "auto",
+          "markdownDescription": "How to call **A2A** agents: `message/stream` (live status and streamed text) or `message/send` (one answer). `auto` follows the agent's Agent Card (needs `bedrock-agentcore:GetAgentCard`; without it, `auto` sends)."
         },
         "agentcore.debugRawResponses": {
           "type": "boolean",

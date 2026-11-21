@@ -20,7 +20,7 @@
   const savedState = vscode.getState() || {};
   const protocolOverrides = savedState.protocolOverrides || {};
 
-  // Shown on the welcome card; round 6e replaces them with the agent's own skills
+  // Shown on the welcome card when the agent has no Agent Card with examples
   const SUGGESTIONS = [
     'What can you help me with?',
     'Show me an example of a task you can do',
@@ -28,6 +28,7 @@
   ];
 
   let agents = new Map();      // arn -> agent from the last agents event
+  const agentCards = new Map(); // arn -> {card, note} from agent_card events; null while asked
   let currentAgentArn = '';
   let protocol = 'HTTP';
   let turns = 0;               // prompts sent in the current session
@@ -51,11 +52,28 @@
     promptInput.style.height = promptInput.scrollHeight + 'px';
   }
 
+  // The current agent's Agent Card summary (A2A only), if Python found one
+  function currentCard() {
+    const entry = protocol === 'A2A' ? agentCards.get(currentAgentArn) : null;
+    return entry ? entry.card : null;
+  }
+
+  // A2A agents publish an Agent Card; ask Python for it once per agent
+  function requestCard() {
+    if (protocol !== 'A2A' || !currentAgentArn || agentCards.has(currentAgentArn)) return;
+    agentCards.set(currentAgentArn, null);
+    vscode.postMessage({ action: 'get_agent_card', profile: profileSelect.value, agentArn: currentAgentArn });
+  }
+
   function showWelcome() {
+    const agentCard = currentCard();
+    // The agent's own example prompts, up to four, instead of the generic ones
+    const examples = agentCard ? agentCard.skills.flatMap((s) => s.examples).slice(0, 4) : [];
     chatView.renderWelcome(chat, {
       agent: currentAgent(),
+      agentCard,
       protocol,
-      suggestions: SUGGESTIONS,
+      suggestions: examples.length ? examples : SUGGESTIONS,
       // Fill the composer rather than sending, so the user can edit first
       onPick: (text) => {
         promptInput.value = text;
@@ -71,6 +89,7 @@
   function loadAgents(refresh) {
     const profile = profileSelect.value;
     if (!profile) return;
+    agentCards.clear();
     ssoBanner.style.display = 'none';
     setPlaceholder(agentSelect, 'Loading agents...');
     vscode.postMessage({ action: 'list_agents', profile, refresh: refresh === true });
@@ -100,6 +119,7 @@
     const agent = currentAgent();
     protocol = protocolOverrides[arn] || (agent && agent.protocol) || 'HTTP';
     renderProtocol();
+    requestCard();
     promptInput.placeholder = agent ? `Ask ${agent.name}...` : 'Select an agent to start...';
     if (turns === 0) showWelcome();
   }
@@ -145,6 +165,7 @@
     }
     vscode.setState({ ...savedState, protocolOverrides });
     renderProtocol();
+    requestCard();
     if (turns === 0) showWelcome();
   }
 
@@ -255,6 +276,11 @@
       // Ignore a slow reply for a profile the user has already switched away from
       if (msg.profile && msg.profile !== profileSelect.value) return;
       renderAgents(msg);
+    },
+    agent_card(msg) {
+      if (msg.profile !== profileSelect.value) return;
+      agentCards.set(msg.agentArn, { card: msg.card, note: msg.note });
+      if (msg.agentArn === currentAgentArn && turns === 0) showWelcome();
     },
     sso_expired(msg) {
       if (msg.requestId) finish(msg.requestId, { error: 'SSO session expired.' });

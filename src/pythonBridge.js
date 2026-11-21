@@ -117,6 +117,12 @@ class PythonBridge {
       this._log.info(`[raw ${String(message.requestId).slice(0, 8)}] ${message.line}`);
       return;
     }
+    // Python's own log lines (events.log), also for the Output channel only
+    if (message.type === 'log') {
+      const write = { warn: 'warn', error: 'error' }[message.level] || 'info';
+      this._log[write](String(message.message));
+      return;
+    }
     if (message.type === 'error') {
       this._log.warn(`Error: ${message.message}`);
     }

@@ -12,7 +12,7 @@ const { JSDOM } = require('jsdom');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const PYTHON = path.join(REPO, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-const MOCK_SETTINGS = { mock: true, region: 'eu-central-1', a2aStreaming: false, debugRaw: false };
+const MOCK_SETTINGS = { mock: true, region: 'eu-central-1', a2aStreaming: 'off', debugRaw: false };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

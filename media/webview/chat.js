@@ -73,14 +73,29 @@
   }
 
   // Welcome card shown while the chat is empty. onPick(text) fills the composer.
-  function renderWelcome(container, { agent, protocol, suggestions, onPick }) {
+  // agentCard (A2A agents, when available) adds the version and the skills.
+  function renderWelcome(container, { agent, agentCard, protocol, suggestions, onPick }) {
     const card = el('div', 'empty');
     card.appendChild(avatar(26));
     card.appendChild(el('h2', '', agent ? agent.name : 'AgentCore Chat'));
-    if (agent) card.appendChild(el('div', 'protocol', `${protocol} agent`));
+    if (agent) {
+      const version = agentCard && agentCard.version ? ` · v${agentCard.version}` : '';
+      card.appendChild(el('div', 'protocol', `${protocol} agent${version}`));
+    }
     card.appendChild(el('p', '', agent
-      ? (agent.description || 'Ask a question to start the conversation.')
+      ? (agent.description || (agentCard && agentCard.description) || 'Ask a question to start the conversation.')
       : 'Choose an AWS profile and an agent below to start chatting.'));
+
+    if (agent && agentCard && agentCard.skills.length) {
+      const skills = el('div', 'skills');
+      skills.appendChild(el('div', 'label', 'Skills'));
+      for (const skill of agentCard.skills) {
+        const tag = el('span', 'skill', skill.name);
+        if (skill.description) tag.title = skill.description;
+        skills.appendChild(tag);
+      }
+      card.appendChild(skills);
+    }
 
     if (agent) {
       const chips = el('div', 'chips');
@@ -227,9 +242,10 @@
     scrollToBottom(reply.container);
   }
 
-  // e.g. "A2A · 1.8s · completed"
+  // e.g. "A2A · streamed · 1.8s · completed"
   function footerText(meta) {
     const parts = [meta.protocol];
+    if (meta.streamed) parts.push('streamed');
     if (typeof meta.ms === 'number') parts.push((meta.ms / 1000).toFixed(1) + 's');
     const state = meta.state === 'cancelled' ? 'cancelled' : (meta.taskState || meta.state);
     if (state) parts.push(state.replace(/-/g, ' '));

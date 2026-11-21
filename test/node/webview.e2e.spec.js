@@ -17,20 +17,20 @@ test('agent list, note, MOCK badge and welcome card', async (t) => {
   assert.strictEqual($('agentsNote').textContent, '1 non-chat agent (MCP/AGUI) hidden');
   assert.strictEqual($('mockBadge').hidden, false);
 
-  const card = p.empty();
-  assert.ok(card, 'welcome card shown');
-  assert.strictEqual(card.querySelector('h2').textContent, 'demo-a2a');
-  assert.strictEqual(card.querySelector('.protocol').textContent, 'A2A agent');
-  assert.strictEqual(card.querySelectorAll('.chip').length, 3);
+  assert.ok(p.empty(), 'welcome card shown');
+  assert.strictEqual(p.empty().querySelector('h2').textContent, 'demo-a2a');
   assert.strictEqual($('promptInput').placeholder, 'Ask demo-a2a...');
+
+  p.pick('demo-http-strands');
+  const card = p.empty();
+  assert.strictEqual(card.querySelector('h2').textContent, 'demo-http-strands');
+  assert.strictEqual(card.querySelector('.protocol').textContent, 'HTTP agent');
+  assert.strictEqual(card.querySelectorAll('.chip').length, 3, 'generic suggestions');
+  assert.strictEqual($('promptInput').placeholder, 'Ask demo-http-strands...');
 
   card.querySelector('.chip').click();
   assert.strictEqual($('promptInput').value, 'What can you help me with?');
   assert.ok(!p.sent.some((m) => m.action === 'invoke_agent'), 'a chip fills the composer but does not send');
-
-  p.pick('demo-http-strands');
-  assert.strictEqual(p.empty().querySelector('h2').textContent, 'demo-http-strands');
-  assert.strictEqual($('promptInput').placeholder, 'Ask demo-http-strands...');
 
   p.post({ type: 'settings', data: { ...MOCK_SETTINGS, mock: false } });
   assert.strictEqual($('mockBadge').hidden, true, 'badge follows the mock setting');
@@ -418,4 +418,70 @@ test('keyboard: ↑ recalls the last prompt, Esc stops the reply', async (t) => 
   const cancels = p.sent.filter((m) => m.action === 'cancel').length;
   assert.ok(!key(p.document.body, 'Escape').defaultPrevented, 'Esc when idle is left to VS Code');
   assert.strictEqual(p.sent.filter((m) => m.action === 'cancel').length, cancels, 'Esc when idle does nothing');
+});
+
+test('A2A Agent Card: version, skills and example chips; asked once per agent', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const cardRequests = () => p.sent.filter((m) => m.action === 'get_agent_card');
+
+  assert.ok(await until(() => p.empty().querySelector('.skills')), 'skills shown once the card arrives');
+  const card = p.empty();
+  assert.strictEqual(card.querySelector('.protocol').textContent, 'A2A agent · v1.2.0');
+  assert.deepStrictEqual([...card.querySelectorAll('.skill')].map((s) => s.textContent), ['Deploy services', 'Explain errors']);
+  assert.strictEqual(card.querySelector('.skill').title, 'Plans and runs deployments to dev or prod.');
+  assert.deepStrictEqual([...card.querySelectorAll('.chip')].map((c) => c.textContent), [
+    "Deploy the billing service (I'll ask for input)", 'Show the deployment guide as markdown', 'Why did the last deploy fail?'
+  ]);
+  assert.deepStrictEqual(plain(cardRequests()), [{ action: 'get_agent_card', profile: $('profileSelect').value, agentArn: $('agentSelect').value }]);
+
+  // HTTP agents have no card; going back to the A2A agent uses the one already fetched
+  p.pick('demo-http-strands');
+  assert.ok(!p.empty().querySelector('.skills'));
+  p.pick('demo-a2a');
+  assert.ok(p.empty().querySelector('.skills'));
+  assert.strictEqual(cardRequests().length, 1, 'cached in the panel');
+
+  // Switched to HTTP: no card shown; an agent without a card keeps the generic chips
+  p.toggle('HTTP');
+  assert.ok(!p.empty().querySelector('.skills'));
+  p.toggle('A2A');
+  assert.ok(p.empty().querySelector('.skills'), 'back to A2A: card shown again');
+  p.pick('demo-unknown');
+  p.toggle('A2A');
+  await until(() => cardRequests().length === 2);
+  await sleep(300);
+  assert.ok(!p.empty().querySelector('.skills'));
+  assert.strictEqual(p.empty().querySelector('.chip').textContent, 'What can you help me with?');
+
+  // Refresh asks again
+  $('refreshBtn').click();
+  await p.ready();
+  await until(() => cardRequests().length === 3);
+  assert.strictEqual(cardRequests().length, 3);
+
+  // A chip with "markdown" in it: the A2A reply renders it
+  p.pick('demo-a2a');
+  await until(() => p.empty() && p.empty().querySelector('.skills'));
+  [...p.empty().querySelectorAll('.chip')][1].click();
+  $('sendBtn').click();
+  await until(p.idle, 10000);
+  assert.strictEqual(p.part(p.last(), 'text').querySelector('h2').textContent, 'Deploying the demo agent');
+});
+
+test('A2A auto streaming follows the Agent Card', async (t) => {
+  const p = openPanel({ settings: { ...MOCK_SETTINGS, a2aStreaming: 'auto' } });
+  t.after(p.close);
+  await p.ready();
+  p.type('hi');
+  await until(p.idle);
+  assert.match(p.part(p.last(), 'footer').textContent, /^A2A · streamed · \d+\.\ds · completed$/);
+
+  p.pick('demo-unknown');
+  p.toggle('A2A');
+  p.type('hi');
+  await until(p.idle);
+  assert.match(p.part(p.last(), 'footer').textContent, /^A2A · \d+\.\ds · completed$/, 'no card: message/send');
 });

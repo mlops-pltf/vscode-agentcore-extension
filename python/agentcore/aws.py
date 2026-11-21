@@ -37,6 +37,16 @@ def _client(profile: str, service: str, region: Optional[str] = None):
         return _clients[key]
 
 
+def _no_region(profile: str) -> AgentCoreError:
+    return AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config "
+                          "or set agentcore.region.")
+
+
+def _error_text(e: ClientError) -> str:
+    err = e.response.get("Error", {})
+    return f"{err.get('Code', '')}: {err.get('Message', str(e))}"
+
+
 def list_profiles():
     return boto3.Session().available_profiles
 
@@ -57,11 +67,9 @@ def list_agents(profile: str, region: Optional[str] = None) -> List[dict]:
     except _SSO_ERRORS:
         raise SsoExpired(profile)
     except NoRegionError:
-        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config "
-                             "or set agentcore.region.")
+        raise _no_region(profile)
     except ClientError as e:
-        err = e.response.get("Error", {})
-        raise AgentCoreError(f"Could not list agents: {err.get('Code', '')}: {err.get('Message', str(e))}")
+        raise AgentCoreError(f"Could not list agents: {_error_text(e)}")
 
     return [{"name": r.get("agentRuntimeName") or r["agentRuntimeId"],
              "arn": r["agentRuntimeArn"],
@@ -76,6 +84,19 @@ def _protocol_of(control, runtime_id: str) -> Optional[str]:
     except ClientError:
         return None
     return (runtime.get("protocolConfiguration") or {}).get("serverProtocol")
+
+
+def get_agent_card(profile: str, agent_arn: str, region: Optional[str] = None) -> dict:
+    """The A2A agent's Agent Card (GetAgentCard), as the JSON the agent publishes."""
+    try:
+        response = _client(profile, "bedrock-agentcore", region).get_agent_card(agentRuntimeArn=agent_arn)
+    except _SSO_ERRORS:
+        raise SsoExpired(profile)
+    except NoRegionError:
+        raise _no_region(profile)
+    except ClientError as e:
+        raise AgentCoreError(_error_text(e))
+    return response.get("agentCard") or {}
 
 
 def get_runtime_user_id(profile: str) -> str:
@@ -114,8 +135,7 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
     except _SSO_ERRORS:
         raise SsoExpired(profile)
     except NoRegionError:
-        raise AgentCoreError(f"Profile {profile} has no region. Add 'region = ...' to it in ~/.aws/config "
-                             "or set agentcore.region.")
+        raise _no_region(profile)
     except ClientError as e:
         err = e.response.get("Error", {})
         code, message = err.get("Code", ""), err.get("Message", str(e))

@@ -102,6 +102,34 @@ def list_agents(profile: str, region: Optional[str] = None) -> List[dict]:
     ]
 
 
+# The Agent Card demo-a2a publishes (A2A spec shape). Examples double as
+# suggestion chips, and some trigger mock scenarios (markdown, input).
+MOCK_AGENT_CARD = {
+    "name": "demo-a2a",
+    "description": "Mock deployment assistant speaking A2A",
+    "version": "1.2.0",
+    "protocolVersion": "0.3.0",
+    "url": "https://example.invalid/demo-a2a",
+    "capabilities": {"streaming": True},
+    "defaultInputModes": ["text/plain"],
+    "defaultOutputModes": ["text/plain"],
+    "skills": [
+        {"id": "deploy", "name": "Deploy services", "tags": ["deploy"],
+         "description": "Plans and runs deployments to dev or prod.",
+         "examples": ["Deploy the billing service (I'll ask for input)", "Show the deployment guide as markdown"]},
+        {"id": "explain", "name": "Explain errors", "tags": ["debug"],
+         "description": "Explains failures and stack traces in plain words.",
+         "examples": ["Why did the last deploy fail?"]},
+    ],
+}
+
+
+def get_agent_card(profile: str, agent_arn: str, region: Optional[str] = None) -> dict:
+    if "demo_a2a" not in agent_arn:
+        raise AgentCoreError("ResourceNotFoundException: this mock agent publishes no Agent Card")
+    return json.loads(json.dumps(MOCK_AGENT_CARD))  # a copy, like a fresh API response
+
+
 def get_runtime_user_id(profile: str) -> str:
     return "mock-user@example.com"
 

@@ -30,6 +30,12 @@ def send(msg: dict) -> None:
         _out.flush()
 
 
+def log(message: str, level: str = "info") -> None:
+    """A line for the extension's Output channel (never shown in the panel).
+    level: info, warn or error."""
+    send({"type": "log", "level": level, "message": message})
+
+
 class Emitter:
     """Sends events tagged with a single request's id."""
 
