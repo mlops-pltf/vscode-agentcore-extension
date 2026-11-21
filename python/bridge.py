@@ -12,9 +12,11 @@ from typing import Dict, Optional, Tuple
 
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
-from agentcore import aws, http_protocol, mock_runtime
+from agentcore import aws, mock_runtime, protocols
 from agentcore.cancel import CancelToken
 from agentcore.events import Emitter, send
+from agentcore.protocols import InvokeContext
+from agentcore.response import AgentResponse
 
 
 def _backend(settings: dict):
@@ -62,9 +64,6 @@ def list_agents(cmd: dict):
         send({"type": "error", "message": str(e)})
 
 
-# Protocol modules by name; each has build_payload(), ACCEPT and handle_response()
-PROTOCOLS = {"HTTP": http_protocol}
-
 # In-flight invocations by requestId
 _active: Dict[str, Tuple[threading.Thread, CancelToken]] = {}
 _active_lock = threading.Lock()
@@ -97,18 +96,18 @@ def _run_invoke(cmd: dict, request_id: str, token: CancelToken):
         session_id = cmd.get("sessionId") or str(uuid.uuid4())
         user_id = backend.get_runtime_user_id(profile)
 
-        protocol = (cmd.get("protocol") or "HTTP").upper()
-        handler = PROTOCOLS.get(protocol)
-        if handler is None:
-            emitter.error(f"Protocol {protocol} is not supported yet")
+        protocol = protocols.get(cmd.get("protocol") or "HTTP")
+        if protocol is None:
+            emitter.error(f"Protocol {cmd.get('protocol')} is not supported yet")
             return
 
-        payload = handler.build_payload(cmd["prompt"])
-        response = backend.invoke(profile, cmd["agentArn"], session_id, payload,
-                                  handler.ACCEPT, user_id)
-        meta = handler.handle_response(response, emitter, token)
+        ctx = InvokeContext(request_id=request_id, prompt=cmd["prompt"], session_id=session_id,
+                            settings=settings, session_state={})
+        raw = backend.invoke(profile, cmd["agentArn"], session_id,
+                             protocol.build_payload(ctx), protocol.accept, user_id)
+        meta = protocol.handle(AgentResponse(raw, emitter, token), emitter, ctx)
         emitter.done(state="cancelled" if token.cancelled else "completed",
-                     protocol=protocol,
+                     protocol=protocol.name,
                      ms=int((time.monotonic() - started) * 1000),
                      **meta)
     except aws.SsoExpired as e:

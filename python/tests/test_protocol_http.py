@@ -2,21 +2,25 @@ import json
 import threading
 import unittest
 
-from agentcore import http_protocol, mock_runtime
-from agentcore.aws import AgentCoreError
 from agentcore.cancel import CancelToken
-from tests.helpers import RecordingEmitter, fake_response, fixture_response
+
+from agentcore import mock_runtime
+from agentcore.errors import AgentCoreError
+from agentcore.protocols.http import HttpProtocol
+from tests.helpers import RecordingEmitter, context, fake_response, fixture_response, handle
+
+HTTP = HttpProtocol()
 
 
-def run(response):
+def run(response, token=None):
     emitter = RecordingEmitter()
-    meta = http_protocol.handle_response(response, emitter, CancelToken())
+    meta = handle(HTTP, response, emitter, token)
     return emitter, meta
 
 
 class BuildPayloadTest(unittest.TestCase):
     def test_prompt_body(self):
-        self.assertEqual(json.loads(http_protocol.build_payload("hi")), {"prompt": "hi"})
+        self.assertEqual(json.loads(HTTP.build_payload(context("hi"))), {"prompt": "hi"})
 
 
 class StreamFixturesTest(unittest.TestCase):
@@ -94,9 +98,9 @@ class EdgeCasesTest(unittest.TestCase):
     def test_cancel_mid_stream_stops_output(self):
         body = b"".join(b'data: {"data": "w%d "}\n\n' % i for i in range(50))
         response = fake_response(body, "text/event-stream", delay=0.01)
-        emitter, token = RecordingEmitter(), CancelToken()
+        token = CancelToken()
         threading.Timer(0.1, token.cancel).start()
-        http_protocol.handle_response(response, emitter, token)
+        emitter, _ = run(response, token)
         self.assertTrue(token.cancelled)
         self.assertLess(len(emitter.of("chunk")), 25)
 
@@ -113,7 +117,7 @@ class MockRuntimeTest(unittest.TestCase):
 
     def invoke(self, prompt):
         response = mock_runtime.invoke("p", "arn:x:runtime/demo", "s" * 36,
-                                       http_protocol.build_payload(prompt), http_protocol.ACCEPT)
+                                       HTTP.build_payload(context(prompt)), HTTP.accept)
         return run(response)[0]
 
     def test_stream(self):
