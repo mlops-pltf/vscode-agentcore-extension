@@ -17,7 +17,7 @@ import uuid
 from typing import List, Optional
 
 from agentcore import aws
-from agentcore.aws import AgentCoreError
+from agentcore.errors import AgentCoreError
 
 FAST_DELAY = 0.04
 SLOW_DELAY = 1.0

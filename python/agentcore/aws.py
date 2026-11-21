@@ -15,17 +15,9 @@ from botocore.exceptions import (
     UnauthorizedSSOTokenError,
 )
 
+from agentcore.errors import AgentCoreError, SsoExpired
+
 _SSO_ERRORS = (SSOError, SSOTokenLoadError, TokenRetrievalError, UnauthorizedSSOTokenError)
-
-
-class SsoExpired(Exception):
-    def __init__(self, profile: str):
-        super().__init__(f"SSO session expired for profile {profile}")
-        self.profile = profile
-
-
-class AgentCoreError(Exception):
-    """An error whose message is safe and useful to show the user as-is."""
 
 
 # boto3 clients are thread-safe, but creating them is not, so cache under a lock
