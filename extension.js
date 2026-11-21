@@ -46,10 +46,6 @@ class AgentCoreViewProvider {
         this._view?.webview.postMessage({ type: 'sessionReset', sessionId: crypto.randomUUID() });
         return;
       }
-      const config = vscode.workspace.getConfiguration('agentcore');
-      if (msg.action === 'list_agents') {
-        msg.registryId = config.get('registryId') || undefined;
-      }
       this._sendToPython(msg);
     });
 
@@ -251,16 +247,17 @@ class AgentCoreViewProvider {
 
     vscode.postMessage({ action: 'list_profiles' });
 
-    function loadAgents() {
+    // refresh = true skips the agent-list cache in Python
+    function loadAgents(refresh) {
       const profile = profileSelect.value;
       if (!profile) return;
       ssoBanner.style.display = 'none';
       setPlaceholder(agentSelect, 'Loading agents...');
-      vscode.postMessage({ action: 'list_agents', profile });
+      vscode.postMessage({ action: 'list_agents', profile, refresh: refresh === true });
     }
 
-    profileSelect.addEventListener('change', loadAgents);
-    document.getElementById('refreshBtn').addEventListener('click', loadAgents);
+    profileSelect.addEventListener('change', () => loadAgents(false));
+    document.getElementById('refreshBtn').addEventListener('click', () => loadAgents(true));
     document.getElementById('ssoLoginBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'ssoLogin', profile: profileSelect.value });
     });
@@ -310,6 +307,8 @@ class AgentCoreViewProvider {
         setOptions(profileSelect, msg.data.map(p => ({ value: p, label: p })));
         loadAgents();
       } else if (msg.type === 'agents') {
+        // Ignore a slow reply for a profile the user has already switched away from
+        if (msg.profile && msg.profile !== profileSelect.value) return;
         if (!msg.data.length) {
           setPlaceholder(agentSelect, 'No agents found');
         } else {
