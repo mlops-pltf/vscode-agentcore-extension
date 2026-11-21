@@ -28,7 +28,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 | A1 | HTTP agents accept `{"prompt": "<text>"}` | **Confirmed** by user | One constant `HTTP_PROMPT_KEY` in `http_protocol.py` |
 | A2 | HTTP responses are `text/event-stream` (SSE `data:` lines) **or** `application/json` | Low | Parser branches on `contentType`, with a sniffing fallback |
 | A3 | SSE `data:` payload is one of: plain text, JSON string, `{"data": str}` (Strands), `{"event":{"contentBlockDelta":{"delta":{"text"}}}}` (raw Bedrock), `{"text"/"delta"/"content"/"output"/"response"/"result": …}` | High | Ordered extractor list, one fixture per shape |
-| A4 | Strands sends **both** `{"event": …}` and `{"data": …}` for the same token | Med | Raw `event` text is buffered and only used if the stream produces no `data`-style text (avoids doubled output) |
+| A4 | Strands sends **both** `{"event": …}` and `{"data": …}` for the same token, and ends with `{"result": "<full text>"}` | Med | Raw `event` text and the final `result` are buffered and only used if the stream produced no `data`-style text (avoids doubled output) |
 | A5 | A2A agents get a JSON-RPC 2.0 body through the same `invoke_agent_runtime`, method `message/send` (optionally `message/stream`) | Med | Method picked by the `agentcore.a2aStreaming` setting (default off) |
 | A6 | A2A parts use `kind` (spec ≥0.2.x); older agents use `type` | Low | Accept both |
 | A7 | A2A result is a `Message` or a `Task`; stream events add `status-update` and `artifact-update` | Med | Handle each `kind`; ignore unknown ones (they still appear in the raw debug log) |
@@ -90,6 +90,7 @@ python/
   agentcore/
     __init__.py
     events.py            # Emitter: chunk/status/done/error/raw helpers bound to requestId
+    cancel.py            # CancelToken: flag + closes the streaming body to unblock reads
     sse.py               # iter_sse_events(lines) -> yields data strings
     text_extract.py      # extract_text(obj) -> (text|None, kind)  (A3/A4)
     http_protocol.py     # build_payload(), handle_response()
@@ -105,14 +106,15 @@ python/
     test_bridge_smoke.py
 ```
 
-- [ ] **T1.1** `events.py`: thread-safe `send()` (a `threading.Lock` around print + flush) and an `Emitter(request_id)` class with `chunk/status/done/error/raw`.
-- [ ] **T1.2** `bridge.py`: move to the dispatch-table style (`HANDLERS = {"list_profiles": …}`); unknown action → `error`. Python behaviour stays the same.
-- [ ] **T1.3** Run each `invoke_agent` on its own `threading.Thread`, tracked in `ACTIVE = {requestId: CancelToken}`; the stdin loop never blocks.
-- [ ] **T1.4** `cancel`: set the token's event **and** call `body.close()` on the live StreamingBody so a blocked read returns; emit `done` with `meta.state="cancelled"`.
-- [ ] **T1.5** `aws.py`: `get_session(profile)` (cached per profile), `invoke(profile, arn, session_id, payload_bytes, accept)` → raw boto response. SSO errors become a single `SsoExpired` exception.
-- [ ] **T1.5b** `aws.get_runtime_user_id(profile)`: `sts.get_caller_identity()` once per profile (cached). For `arn:aws:sts::<acct>:assumed-role/<role>/<session>` use `<session>` (usually the SSO email); otherwise fall back to `UserId`. Send it as `runtimeUserId` on every invoke. An `AccessDeniedException` that mentions `InvokeAgentRuntimeForUser` → a clear `error`: "Your role lacks bedrock-agentcore:InvokeAgentRuntimeForUser". The mock returns `mock-user@example.com`.
-- [ ] **T1.6** `mock_runtime.py`: `invoke(...)` with the same signature returning `{"contentType", "response": FakeBody, "statusCode"}`. `FakeBody` has `iter_lines()`, `read()`, `close()` and sleeps ~80 ms between lines. Scenarios are picked by protocol and prompt keyword (`json`, `error`, `slow`, `tool`, `input`).
+- [x] **T1.1** `events.py`: thread-safe `send()` (a `threading.Lock` around print + flush) and an `Emitter(request_id)` class with `chunk/status/done/error/raw`.
+- [x] **T1.2** `bridge.py`: move to the dispatch-table style (`HANDLERS = {"list_profiles": …}`); unknown action → `error`. Python behaviour stays the same.
+- [x] **T1.3** Run each `invoke_agent` on its own `threading.Thread`, tracked in `ACTIVE = {requestId: CancelToken}`; the stdin loop never blocks.
+- [x] **T1.4** `cancel`: set the token's event **and** call `body.close()` on the live StreamingBody so a blocked read returns; emit `done` with `meta.state="cancelled"`.
+- [x] **T1.5** `aws.py`: `get_session(profile)` (cached per profile), `invoke(profile, arn, session_id, payload_bytes, accept)` → raw boto response. SSO errors become a single `SsoExpired` exception.
+- [x] **T1.5b** `aws.get_runtime_user_id(profile)`: `sts.get_caller_identity()` once per profile (cached). For `arn:aws:sts::<acct>:assumed-role/<role>/<session>` use `<session>` (usually the SSO email); otherwise fall back to `UserId`. Send it as `runtimeUserId` on every invoke. An `AccessDeniedException` that mentions `InvokeAgentRuntimeForUser` → a clear `error`: "Your role lacks bedrock-agentcore:InvokeAgentRuntimeForUser". The mock returns `mock-user@example.com`.
+- [x] **T1.6** `mock_runtime.py`: `invoke(...)` with the same signature returning `{"contentType", "response": FakeBody, "statusCode"}`. `FakeBody` has `iter_lines()`, `read()`, `close()` and sleeps ~80 ms between lines. Scenarios are picked by protocol and prompt keyword (`json`, `error`, `slow`, `tool`, `input`).
   *Done when:* `aws.invoke` and `mock_runtime.invoke` can be swapped with `settings.mock`.
+  *Note:* the bridge uses the mock unless `settings.mock` is explicitly `false` (safe default: never hit AWS by accident).
 
 ### Phase 2: HTTP protocol handler
 
