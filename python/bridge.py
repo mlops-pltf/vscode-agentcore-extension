@@ -6,12 +6,14 @@ and replies with JSON events on stdout (see agentcore/events.py).
 import json
 import sys
 import threading
+import time
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import boto3
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
+from agentcore.cancel import CancelToken
 from agentcore.events import Emitter, send
 
 
@@ -56,28 +58,41 @@ def list_agents(cmd: dict):
 
 
 # In-flight invocations by requestId
-_active: Dict[str, threading.Thread] = {}
+_active: Dict[str, Tuple[threading.Thread, CancelToken]] = {}
 _active_lock = threading.Lock()
 
 
 def invoke_agent(cmd: dict):
     # Run on a worker thread so the stdin loop stays free for cancel/other requests
     request_id = cmd.get("requestId") or str(uuid.uuid4())
-    thread = threading.Thread(target=_run_invoke, args=(cmd, request_id), daemon=True)
+    token = CancelToken()
+    thread = threading.Thread(target=_run_invoke, args=(cmd, request_id, token), daemon=True)
     with _active_lock:
-        _active[request_id] = thread
+        _active[request_id] = (thread, token)
     thread.start()
 
 
-def _run_invoke(cmd: dict, request_id: str):
+def cancel(cmd: dict):
+    with _active_lock:
+        entry = _active.get(cmd.get("requestId"))
+    if entry:
+        entry[1].cancel()
+
+
+def _run_invoke(cmd: dict, request_id: str, token: CancelToken):
     emitter = Emitter(request_id)
     try:
-        emitter.chunk('Fisrt chunk...\n')
-        emitter.chunk('Second chunk...\n')
-        emitter.chunk('Last chunk...\n')
-        emitter.done()
+        for text in ('Fisrt chunk...\n', 'Second chunk...\n', 'Last chunk...\n'):
+            if token.cancelled:
+                break
+            emitter.chunk(text)
+            time.sleep(0.3)
+        emitter.done(state="cancelled" if token.cancelled else "completed")
     except Exception as e:
-        emitter.error(f"{type(e).__name__}: {e}")
+        if token.cancelled:
+            emitter.done(state="cancelled")
+        else:
+            emitter.error(f"{type(e).__name__}: {e}")
     finally:
         with _active_lock:
             _active.pop(request_id, None)
@@ -87,6 +102,7 @@ HANDLERS = {
     "list_profiles": list_profiles,
     "list_agents": list_agents,
     "invoke_agent": invoke_agent,
+    "cancel": cancel,
 }
 
 
@@ -107,7 +123,7 @@ def main():
 
     # stdin closed: let in-flight replies finish before exiting
     with _active_lock:
-        threads = list(_active.values())
+        threads = [thread for thread, _ in _active.values()]
     for thread in threads:
         thread.join()
 
