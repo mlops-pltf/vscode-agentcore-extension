@@ -67,11 +67,12 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
         raw = backend.invoke(profile, cmd["agentArn"], session_id,
                              protocol.build_payload(ctx), protocol.accept, user_id)
         meta = protocol.handle(AgentResponse(raw, emitter, token), emitter, ctx)
-        emitter.done(state="cancelled" if token.cancelled else "completed",
-                     protocol=protocol.name,
-                     mock=is_mock(settings),
-                     ms=int((time.monotonic() - started) * 1000),
-                     **meta)
+        # These keys belong to the request as a whole; a protocol's meta can't override them
+        emitter.done(**{**meta,
+                        "state": "cancelled" if token.cancelled else "completed",
+                        "protocol": protocol.name,
+                        "mock": is_mock(settings),
+                        "ms": int((time.monotonic() - started) * 1000)})
     except SsoExpired as e:
         emitter.sso_expired(e.profile)
     except AgentCoreError as e:
