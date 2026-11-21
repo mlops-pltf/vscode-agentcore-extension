@@ -2,30 +2,21 @@
 
 Reads one JSON command per line from stdin, dispatches it by "action",
 and replies with JSON events on stdout (see agentcore/events.py).
+Agent invocations run in agentcore/invocations.py.
 """
 import json
 import sys
-import threading
-import time
-import uuid
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
-from agentcore import aws, mock_runtime, protocols
-from agentcore.cancel import CancelToken
-from agentcore.events import Emitter, send
-from agentcore.protocols import InvokeContext
-from agentcore.response import AgentResponse
-
-
-def _backend(settings: dict):
-    # Only call AWS when the extension explicitly turns mock off
-    return mock_runtime if settings.get("mock", True) else aws
+from agentcore import invocations, sessions
+from agentcore.backends import backend_for
+from agentcore.events import claim_stdout, send
 
 
 def list_profiles(cmd: dict):
-    send({"type": "profiles", "data": _backend(cmd.get("settings") or {}).list_profiles()})
+    send({"type": "profiles", "data": backend_for(cmd.get("settings") or {}).list_profiles()})
 
 
 def list_agents(cmd: dict):
@@ -64,64 +55,16 @@ def list_agents(cmd: dict):
         send({"type": "error", "message": str(e)})
 
 
-# In-flight invocations by requestId
-_active: Dict[str, Tuple[threading.Thread, CancelToken]] = {}
-_active_lock = threading.Lock()
-
-
 def invoke_agent(cmd: dict):
-    # Run on a worker thread so the stdin loop stays free for cancel/other requests
-    request_id = cmd.get("requestId") or str(uuid.uuid4())
-    token = CancelToken()
-    thread = threading.Thread(target=_run_invoke, args=(cmd, request_id, token), daemon=True)
-    with _active_lock:
-        _active[request_id] = (thread, token)
-    thread.start()
+    invocations.start(cmd)
 
 
 def cancel(cmd: dict):
-    with _active_lock:
-        entry = _active.get(cmd.get("requestId"))
-    if entry:
-        entry[1].cancel()
+    invocations.cancel(cmd.get("requestId"))
 
 
-def _run_invoke(cmd: dict, request_id: str, token: CancelToken):
-    settings = cmd.get("settings") or {}
-    emitter = Emitter(request_id, debug_raw=settings.get("debugRaw", False))
-    backend = _backend(settings)
-    started = time.monotonic()
-    try:
-        profile = cmd["profile"]
-        session_id = cmd.get("sessionId") or str(uuid.uuid4())
-        user_id = backend.get_runtime_user_id(profile)
-
-        protocol = protocols.get(cmd.get("protocol") or "HTTP")
-        if protocol is None:
-            emitter.error(f"Protocol {cmd.get('protocol')} is not supported yet")
-            return
-
-        ctx = InvokeContext(request_id=request_id, prompt=cmd["prompt"], session_id=session_id,
-                            settings=settings, session_state={})
-        raw = backend.invoke(profile, cmd["agentArn"], session_id,
-                             protocol.build_payload(ctx), protocol.accept, user_id)
-        meta = protocol.handle(AgentResponse(raw, emitter, token), emitter, ctx)
-        emitter.done(state="cancelled" if token.cancelled else "completed",
-                     protocol=protocol.name,
-                     ms=int((time.monotonic() - started) * 1000),
-                     **meta)
-    except aws.SsoExpired as e:
-        emitter.sso_expired(e.profile)
-    except aws.AgentCoreError as e:
-        emitter.error(str(e))
-    except Exception as e:
-        if token.cancelled:
-            emitter.done(state="cancelled")
-        else:
-            emitter.error(f"{type(e).__name__}: {e}")
-    finally:
-        with _active_lock:
-            _active.pop(request_id, None)
+def reset_session(cmd: dict):
+    sessions.reset(cmd.get("sessionId"))
 
 
 HANDLERS = {
@@ -129,10 +72,12 @@ HANDLERS = {
     "list_agents": list_agents,
     "invoke_agent": invoke_agent,
     "cancel": cancel,
+    "reset_session": reset_session,
 }
 
 
 def main():
+    claim_stdout()
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -148,10 +93,7 @@ def main():
             send({"type": "error", "message": f"Bridge error: {e}"})
 
     # stdin closed: let in-flight replies finish before exiting
-    with _active_lock:
-        threads = [thread for thread, _ in _active.values()]
-    for thread in threads:
-        thread.join()
+    invocations.wait_all()
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ class BridgeSmokeTest(unittest.TestCase):
         self.assertEqual(a[-1]["type"], "done")
         self.assertEqual(a[-1]["meta"]["protocol"], "HTTP")
         self.assertEqual(a[-1]["meta"]["state"], "completed")
+        self.assertIs(a[-1]["meta"]["mock"], True)
 
         b = self.for_request(events, "B")
         self.assertEqual(b[-1]["meta"]["contentType"], "application/json")
@@ -54,6 +55,10 @@ class BridgeSmokeTest(unittest.TestCase):
         s = self.for_request(events, "S")
         self.assertEqual(s[-1]["type"], "done")
         self.assertEqual(s[-1]["meta"]["state"], "cancelled")
+
+    def test_reset_session_is_accepted(self):
+        events = self.run_bridge([{"action": "reset_session", "sessionId": "s" * 36}])
+        self.assertEqual(events, [])
 
     def test_unsupported_protocol(self):
         cmd = dict(invoke("P", "hi"), protocol="MCP")

@@ -9,13 +9,25 @@ import threading
 from typing import Optional
 
 _stdout_lock = threading.Lock()
+_out = sys.stdout
+
+
+def claim_stdout() -> None:
+    """Keep the real stdout for protocol messages only.
+
+    Anything else that prints (a library, a stray debug print) goes to stderr,
+    which the extension logs, instead of corrupting the JSON stream.
+    """
+    global _out
+    _out = sys.stdout
+    sys.stdout = sys.stderr
 
 
 def send(msg: dict) -> None:
     line = json.dumps(msg)
     with _stdout_lock:
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
+        _out.write(line + "\n")
+        _out.flush()
 
 
 class Emitter:
