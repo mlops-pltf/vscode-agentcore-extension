@@ -39,9 +39,41 @@
           "type": "string",
           "default": "python3",
           "description": "Path to Python interpreter with boto3 installed"
+        },
+        "agentcore.mock": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use a built-in **mock** AgentCore instead of AWS. For local development and demos; replies are fake."
+        },
+        "agentcore.region": {
+          "type": "string",
+          "default": "eu-central-1",
+          "markdownDescription": "AWS region for AgentCore. Defaults to `eu-central-1`; clear it to use the region from your AWS profile instead."
+        },
+        "agentcore.a2aStreaming": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "For **A2A** agents, use `message/stream` (live status and streamed text) instead of `message/send`. Only enable if your A2A agents support streaming."
+        },
+        "agentcore.debugRawResponses": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log every raw response line to the **AgentCore Chat** Output channel. Useful for capturing real responses as test fixtures; may log sensitive content."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "agentcore.showLogs",
+        "title": "Show Logs",
+        "category": "AgentCore"
+      },
+      {
+        "command": "agentcore.restartBackend",
+        "title": "Restart Backend",
+        "category": "AgentCore"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",

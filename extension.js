@@ -5,23 +5,85 @@ const fs = require('fs');
 const readline = require('readline');
 const crypto = require('crypto');
 
+// Restart the Python bridge after these delays if it crashes; give up when it
+// crashes more than RESTART_DELAYS_MS.length times within CRASH_WINDOW_MS
+const RESTART_DELAYS_MS = [1000, 3000, 10000];
+const CRASH_WINDOW_MS = 60000;
+
+let provider;
+
 function activate(context) {
-  const provider = new AgentCoreViewProvider(context);
+  const log = vscode.window.createOutputChannel('AgentCore Chat', { log: true });
+  provider = new AgentCoreViewProvider(context, log);
   context.subscriptions.push(
+    log,
+    provider,
     vscode.window.registerWebviewViewProvider('agentcoreChatView', provider, {
       webviewOptions: { retainContextWhenHidden: true }
-    })
+    }),
+    vscode.commands.registerCommand('agentcore.showLogs', () => log.show()),
+    vscode.commands.registerCommand('agentcore.restartBackend', () => provider.restartBridge()),
+    vscode.workspace.onDidChangeConfiguration((e) => provider.onConfigChanged(e))
   );
 }
 
 class AgentCoreViewProvider {
-  constructor(context) {
+  constructor(context, log) {
     this._context = context;
     this._extensionUri = context.extensionUri;
+    this._log = log;
     this._view = undefined;
     this._pyProcess = undefined;
     // Messages sent before Python is running (e.g. during first-time venv setup)
     this._pending = [];
+    // Times of recent unexpected bridge exits, for restart backoff
+    this._crashTimes = [];
+    this._disposed = false;
+  }
+
+  dispose() {
+    this._disposed = true;
+    this._stopBridge();
+  }
+
+  // Sent to Python with every message, so Python never keeps stale settings
+  _settings() {
+    const config = vscode.workspace.getConfiguration('agentcore');
+    return {
+      mock: config.get('mock') === true,
+      region: config.get('region') || '',
+      a2aStreaming: config.get('a2aStreaming') === true,
+      debugRaw: config.get('debugRawResponses') === true
+    };
+  }
+
+  onConfigChanged(event) {
+    if (!event.affectsConfiguration('agentcore')) return;
+    this._log.info('Settings changed: ' + JSON.stringify(this._settings()));
+    if (event.affectsConfiguration('agentcore.pythonPath')) {
+      this.restartBridge();
+    }
+    // The webview reloads the agent list if mock mode or region changed
+    this._post({ type: 'settings', data: this._settings() });
+  }
+
+  async restartBridge() {
+    this._crashTimes = [];
+    this._stopBridge();
+    await this._startPythonBridge();
+  }
+
+  _stopBridge() {
+    const proc = this._pyProcess;
+    this._pyProcess = undefined;
+    if (proc) {
+      proc.stoppedOnPurpose = true;
+      proc.kill();
+    }
+  }
+
+  _post(message) {
+    this._view?.webview.postMessage(message);
   }
 
   async resolveWebviewView(webviewView) {
@@ -50,7 +112,8 @@ class AgentCoreViewProvider {
     });
 
     webviewView.onDidDispose(() => {
-      this._pyProcess?.kill();
+      this._view = undefined;
+      this._stopBridge();
     });
 
     await this._startPythonBridge();
@@ -131,40 +194,99 @@ class AgentCoreViewProvider {
   }
 
   async _startPythonBridge() {
+    if (this._disposed || this._pyProcess) return;
     let pythonPath;
     try {
       pythonPath = await this._ensurePythonEnv();
-    } catch {
+    } catch (e) {
+      this._log.error(`Python environment setup failed: ${e.message}`);
       return;
     }
+    // Something else may have started or stopped the bridge while we waited
+    if (this._disposed || this._pyProcess) return;
 
     const scriptPath = path.join(this._extensionUri.fsPath, 'python', 'bridge.py');
-    this._pyProcess = cp.spawn(pythonPath, [scriptPath]);
+    this._log.info(`Starting Python bridge: ${pythonPath} ${scriptPath}`);
+    const proc = cp.spawn(pythonPath, [scriptPath]);
+    this._pyProcess = proc;
 
-    if (this._pyProcess.stdout) {
-      const rl = readline.createInterface({ input: this._pyProcess.stdout });
-      rl.on('line', (line) => {
-        try {
-          const parsed = JSON.parse(line);
-          this._view?.webview.postMessage(parsed);
-        } catch (e) {
-          console.error('Invalid JSON from Python:', line);
-        }
-      });
-    }
-
-    this._pyProcess.stderr?.on('data', (data) => {
-      console.error(`Python stderr: ${data}`);
+    readline.createInterface({ input: proc.stdout }).on('line', (line) => this._onPythonLine(line));
+    proc.stderr.on('data', (data) => {
+      for (const line of String(data).split(/\r?\n/)) {
+        if (line.trim()) this._log.warn(`[python] ${line}`);
+      }
     });
+    // Writing to a process that just died raises EPIPE; log it instead of crashing
+    proc.stdin.on('error', (e) => this._log.warn(`Python stdin: ${e.message}`));
+    proc.on('error', (e) => {
+      this._log.error(`Python bridge could not start: ${e.message}`);
+      this._onBridgeExit(proc, null, null);
+    });
+    proc.on('exit', (code, signal) => this._onBridgeExit(proc, code, signal));
 
+    this._post({ type: 'bridge', state: 'ready' });
     for (const payload of this._pending.splice(0)) {
       this._sendToPython(payload);
     }
   }
 
+  _onPythonLine(line) {
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      this._log.error(`Invalid JSON from Python: ${line}`);
+      return;
+    }
+    // Raw response lines are for the Output channel only (debugRawResponses)
+    if (message.type === 'raw') {
+      this._log.info(`[raw ${String(message.requestId).slice(0, 8)}] ${message.line}`);
+      return;
+    }
+    if (message.type === 'error') {
+      this._log.warn(`Error: ${message.message}`);
+    }
+    this._post(message);
+  }
+
+  _onBridgeExit(proc, code, signal) {
+    // 'error' and 'exit' can both fire for one process
+    if (proc.exitHandled) return;
+    proc.exitHandled = true;
+    if (this._pyProcess === proc) this._pyProcess = undefined;
+
+    if (proc.stoppedOnPurpose || this._disposed) {
+      this._log.info('Python bridge stopped');
+      return;
+    }
+
+    this._log.error(`Python bridge exited unexpectedly (code ${code}, signal ${signal})`);
+    const now = Date.now();
+    this._crashTimes = this._crashTimes.filter((t) => now - t < CRASH_WINDOW_MS).concat(now);
+    const attempt = this._crashTimes.length;
+
+    if (attempt > RESTART_DELAYS_MS.length) {
+      this._post({ type: 'bridge', state: 'down' });
+      this._post({ type: 'error', message: 'AgentCore backend stopped. Run "AgentCore: Restart Backend" to try again.' });
+      vscode.window
+        .showErrorMessage('AgentCore Chat: the Python backend keeps crashing.', 'Show Logs', 'Restart')
+        .then((choice) => {
+          if (choice === 'Show Logs') this._log.show();
+          if (choice === 'Restart') this.restartBridge();
+        });
+      return;
+    }
+
+    const delay = RESTART_DELAYS_MS[attempt - 1];
+    this._log.info(`Restarting Python bridge in ${delay / 1000}s (attempt ${attempt} of ${RESTART_DELAYS_MS.length})`);
+    this._post({ type: 'bridge', state: 'restarting' });
+    this._post({ type: 'error', message: 'AgentCore backend stopped unexpectedly. Restarting...' });
+    setTimeout(() => this._startPythonBridge(), delay);
+  }
+
   _sendToPython(payload) {
-    if (this._pyProcess && this._pyProcess.stdin) {
-      this._pyProcess.stdin.write(JSON.stringify(payload) + '\n');
+    if (this._pyProcess && this._pyProcess.stdin.writable) {
+      this._pyProcess.stdin.write(JSON.stringify({ ...payload, settings: this._settings() }) + '\n');
     } else {
       this._pending.push(payload);
     }
@@ -173,6 +295,8 @@ class AgentCoreViewProvider {
   _getHtml(webview) {
     const initialSessionId = crypto.randomUUID();
     const nonce = crypto.randomBytes(16).toString('base64');
+    // Escape "<" so a setting value can't close the <script> tag
+    const settingsJson = JSON.stringify(this._settings()).replace(/</g, '\\u003c');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -222,6 +346,7 @@ class AgentCoreViewProvider {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let sessionId = "${initialSessionId}";
+    let currentSettings = ${settingsJson};
     let currentAgentBubble = null;
 
     const profileSelect = document.getElementById('profileSelect');
@@ -325,6 +450,11 @@ class AgentCoreViewProvider {
         }
       } else if (msg.type === 'done') {
         currentAgentBubble = null;
+      } else if (msg.type === 'settings') {
+        // Mock mode or region decides which agents exist, so reload the list
+        const changed = msg.data.mock !== currentSettings.mock || msg.data.region !== currentSettings.region;
+        currentSettings = msg.data;
+        if (changed) loadAgents(true);
       } else if (msg.type === 'sessionReset') {
         sessionId = msg.sessionId;
         chat.replaceChildren();
@@ -339,6 +469,8 @@ class AgentCoreViewProvider {
   }
 }
 
-function deactivate() {}
+function deactivate() {
+  provider?.dispose();
+}
 
 module.exports = { activate, deactivate };
