@@ -276,12 +276,12 @@ The JS side grows a lot in 6d.2, 6d.3 and 6e, so it gets the same treatment the 
 
 ##### 6d.3: Behaviour and accessibility
 
-- [ ] **T6.20** Elapsed timer while waiting: the typing indicator shows *Thinking · 4s* until the first words arrive, so long waits are understandable.
-- [ ] **T6.21** Smart scrolling: auto-scroll only while the user is at the bottom. If they scroll up to read, leave the view alone and show a **↓ Jump to latest** button.
-- [ ] **T6.22** Keyboard: **↑** in an empty composer recalls the last prompt, **Esc** stops a reply in progress.
-- [ ] **T6.23** Accessibility (required by VS Code's webview guidelines and by enterprise customers): the chat is `role="log"`; a separate visually hidden `role="status"` region announces "Agent is replying…" / "Reply complete" / errors, and the streaming text itself is **not** in a live region; every chip, button and action can be reached and used with the keyboard, with a visible focus ring (`--vscode-focusBorder`); icon buttons have `aria-label`s; colours come from theme variables.
+- [x] **T6.20** Elapsed timer while waiting: the typing indicator shows *Thinking · 4s* until the first words arrive, so long waits are understandable.
+- [x] **T6.21** Smart scrolling: auto-scroll only while the user is at the bottom. If they scroll up to read, leave the view alone and show a **↓ Jump to latest** button.
+- [x] **T6.22** Keyboard: **↑** in an empty composer recalls the last prompt, and **Esc** stops a reply in progress. *(Trimmed 2026-11-21 by the user: no keybinding for Open Chat.)*
+- **T6.23** Accessibility: *deferred 2026-11-21 by the user ("maybe later"); see section 7.*
 
-*Done when:* the time and smart scrolling work, and the whole panel can be used with the keyboard alone, with status announcements in a screen reader (VoiceOver spot check).
+*Done 2026-11-21.* Scrolling up (wheel, trackpad or scrollbar) stops following at once, even near the bottom; only moving down to the bottom resumes it. The mock's `slow` also delays one-piece answers (A2A `message/send`, HTTP `json`) by 3s, so the timer shows there too. *Done when:* the timer, smart scrolling, ↑ recall and Esc work.
 
 #### Round 6e: AgentCore depth (added 2026-11-21, from web research; builds on 6d)
 
@@ -325,5 +325,5 @@ Goal: features specific to AgentCore that generic chat tools don't have, as sell
 - **Q5** ~~runtimeUserId?~~ **Decided 2026-11-21:** derive it from the SSO identity (see T1.5b, A10).
 
 ## 7. Out of scope here (next "swanky" round)
- *Also deferred (2026-11-21):* chat history (until the extension is approved), and sending code context (selection / active file / "Ask AgentCore about selection").
+ *Also deferred (2026-11-21):* accessibility (T6.23: `role="log"`, a `role="status"` announcer, full keyboard reachability with focus rings, `aria-label`s, VoiceOver check) and the Open Chat keybinding; chat history (until the extension is approved), and sending code context (selection / active file / "Ask AgentCore about selection").
 Markdown + code highlighting with Copy/Insert buttons, codicons, editor-selection context (`@selection`), status bar agent switcher, chat history persistence, export to Markdown.
