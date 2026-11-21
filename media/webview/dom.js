@@ -16,13 +16,15 @@
     return node;
   }
 
-  // Fill a <select> safely: text goes through textContent, never parsed as HTML
+  // Fill a <select> safely: text goes through textContent, never parsed as HTML.
+  // data becomes data-* attributes (e.g. the agent's protocol for the picker).
   function setOptions(select, items) {
-    select.replaceChildren(...items.map(({ value, label, title }) => {
+    select.replaceChildren(...items.map(({ value, label, title, data }) => {
       const opt = document.createElement('option');
       opt.value = value;
       opt.textContent = label;
       if (title) opt.title = title;
+      for (const [key, val] of Object.entries(data || {})) if (val) opt.dataset[key] = val;
       return opt;
     }));
   }

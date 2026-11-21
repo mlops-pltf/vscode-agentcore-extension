@@ -86,6 +86,7 @@ class ChatViewProvider {
       domJs: asset('dom.js'),
       markdownJs: asset('markdown.js'),
       chatJs: asset('chat.js'),
+      pickerJs: asset('picker.js'),
       mainJs: asset('main.js'),
       // Starting values for main.js; "<" is escaped so a value can't close the <script> tag
       init: JSON.stringify({ sessionId: crypto.randomUUID(), settings: this._getSettings() }).replace(/</g, '\\u003c')

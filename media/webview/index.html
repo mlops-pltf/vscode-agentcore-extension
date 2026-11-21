@@ -1,6 +1,6 @@
 <!--
   AgentCore Chat panel markup. extension.js (_getHtml) fills in the placeholders
-  written in double braces: cspSource, nonce, mainCss/domJs/markdownJs/chatJs/mainJs (webview URIs),
+  written in double braces: cspSource, nonce, mainCss/domJs/markdownJs/chatJs/pickerJs/mainJs (webview URIs),
   and init (starting values as JSON).
 -->
 <!DOCTYPE html>
@@ -44,12 +44,20 @@
   </div>
 
   <div class="composer">
+    <!-- Searchable agent list (picker.js), opened by the agent chip; shown above the composer -->
+    <div id="agentPicker" class="picker" hidden>
+      <input id="agentSearch" type="text" placeholder="Search agents..." aria-label="Search agents"
+             role="combobox" aria-controls="agentList" aria-expanded="true" autocomplete="off" spellcheck="false">
+      <ul id="agentList" role="listbox" aria-label="Agents"></ul>
+    </div>
     <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
     <div class="composer-footer">
-      <label class="agent-chip" title="Agent">
+      <div class="agent-chip">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7.5" width="15" height="10" rx="3"/><path d="M12 4.5v3"/><path d="M9.5 12.5h.01M14.5 12.5h.01" stroke-width="2.6"/></svg>
-        <span class="select-wrap"><select id="agentSelect" aria-label="Agent"><option value="">Select profile first...</option></select></span>
-      </label>
+        <!-- The select holds the agents and the choice; picker.js shows it as a searchable list -->
+        <select id="agentSelect" aria-label="Agent" hidden><option value="">Select profile first...</option></select>
+        <button id="agentBtn" class="agent-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Agent"><span id="agentName" class="name"></span></button>
+      </div>
       <div id="protocolToggle" class="segmented" role="group" aria-label="Agent protocol">
         <button data-protocol="HTTP" aria-pressed="true">HTTP</button>
         <button data-protocol="A2A" aria-pressed="false">A2A</button>
@@ -71,6 +79,7 @@
   <script nonce="{{nonce}}" src="{{domJs}}"></script>
   <script nonce="{{nonce}}" src="{{markdownJs}}"></script>
   <script nonce="{{nonce}}" src="{{chatJs}}"></script>
+  <script nonce="{{nonce}}" src="{{pickerJs}}"></script>
   <script nonce="{{nonce}}" src="{{mainJs}}"></script>
 </body>
 </html>

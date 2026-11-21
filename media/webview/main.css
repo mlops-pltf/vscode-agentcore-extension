@@ -284,6 +284,7 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
 /* ---------- composer card ---------- */
 
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -313,7 +314,74 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
 .composer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
 .agent-chip { display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; flex: 0 1 auto; padding-left: 4px; color: var(--muted); }
 .agent-chip svg { flex-shrink: 0; }
-.agent-chip select { color: var(--vscode-foreground); }
+.agent-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 18px 3px 5px;
+  background: transparent;
+  color: var(--vscode-foreground);
+}
+.agent-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+.agent-btn .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-btn::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  opacity: 0.7;
+}
+
+/* Searchable agent list, opening upwards over the chat (picker.js) */
+.picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  max-height: min(360px, 60vh);
+  overflow: hidden;
+  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  border-radius: var(--card-radius);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+.picker input {
+  margin: 6px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: var(--radius);
+  outline: none;
+}
+.picker input:focus { border-color: var(--vscode-focusBorder); }
+.picker ul { list-style: none; margin: 0; padding: 0 4px 4px; overflow-y: auto; }
+.agent-option { padding: 5px 8px; border-radius: var(--radius); cursor: pointer; }
+.agent-option.active {
+  color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground));
+  background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground));
+}
+.agent-option .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.agent-option .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.agent-option.current .name::after { content: " \2713"; }
+.agent-option .proto { flex-shrink: 0; font-size: 10px; font-weight: 600; opacity: 0.7; }
+.agent-option .desc { font-size: 11px; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker mark { color: inherit; background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); border-radius: 2px; }
+.picker .none { padding: 8px; font-size: 12px; color: var(--muted); }
+.picker .link { padding: 0; font-size: 12px; background: none; color: var(--vscode-textLink-foreground); }
+.picker .link:hover { background: none; text-decoration: underline; }
 .grow { flex: 1 1 0; }
 .hint { font-size: 11px; color: var(--muted); white-space: nowrap; margin-right: 4px; }
 /* margin-left: auto keeps Send/Stop on the right when the footer wraps */
@@ -346,7 +414,13 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
+/* Reduced motion (an OS setting, often on in remote desktops): the dots fade
+   in turn instead of bouncing, so the reply still looks alive without movement */
+@keyframes typing-fade {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .typing span { animation: none; opacity: 0.6; }
+  .typing span { animation-name: typing-fade; }
   .msg { animation: none; }
 }

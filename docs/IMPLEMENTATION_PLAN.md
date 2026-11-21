@@ -318,6 +318,19 @@ Use `agentcore.mock = false`, a real profile, and **AgentCore: Show Logs** (Outp
 - [x] **T7.5** Add `python/tests/**`, `python/tools/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`. *(Also `docs/**`, `*.vsix`, `**/*.pyc`; checked with `vsce ls`.)*
 - [x] **T7.6** *(added 2026-11-21)* Fix ESLint: install the missing `globals` dev dependency, browser globals for `media/webview`, CommonJS for the rest. `npm run lint` is clean, so `npm test` (which lints first) works again.
 
+### Phase 8: Searchable agent picker (added 2026-11-21; user request: "we have a lot of agents")
+
+The native `<select>` can't be searched, so the agent chip opens our own picker. The hidden `<select>` stays the single source of truth: the picker only shows it and sets it (with a `change` event), so all agent-change logic in `main.js` (new chat mid-conversation, protocol, welcome card) is untouched. Panel-only; no Python change.
+
+- [x] **T8.1** Picker (`media/webview/picker.js`): the chip becomes a button showing the current agent; clicking it opens a panel **above** the composer (full composer width) with a search box (focused, "Search N agents...") and the agent list. Each row: name, protocol (HTTP / A2A / ?) and a one-line description; the current agent is marked. It follows the `<select>` through a MutationObserver, so loading / "No agents found" / SSO states show in the chip, and the chip is disabled while there are no agents.
+- [x] **T8.2** Search: filters as you type, case-insensitive, on name **and** description; matches highlighted (built with text nodes and `<mark>`, never HTML). No match: "No agents match" with a **Refresh agents** link.
+- [x] **T8.3** Keyboard and mouse: ↑/↓ move (wrapping), Enter picks, Esc closes (without stopping a reply), Tab or a click outside closes; hovering a row highlights it.
+- [x] **T8.4** Tests: panel tests for opening, filtering, highlighting, keyboard, picking (incl. mid-chat new chat), empty states, and untrusted names/descriptions shown as text; README and CHANGELOG.
+
+- [x] **T8.5** *(added 2026-11-21; user report: the dots don't bounce on the office laptop, VS Code 1.109)* With `prefers-reduced-motion: reduce` (an OS setting, often on in remote desktops) the typing dots now **fade in turn** instead of standing still. Likely cause to confirm at the office: `matchMedia('(prefers-reduced-motion: reduce)').matches` in Webview Developer Tools.
+
+*Done 2026-11-21 (mock); a long real list still to try at the office.* *Done when:* with the mock, searching filters and picks agents by mouse and keyboard; with a long real list (office), finding an agent by part of its name or description is quick.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

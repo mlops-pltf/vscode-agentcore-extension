@@ -538,3 +538,123 @@ test('profile tooltip shows who you are signed in as', async (t) => {
   p.post({ type: 'identity', profile: 'some-other-profile', account: '9', region: 'x', user: 'stale' });
   assert.strictEqual(select.title, `AWS profile ${select.value}: SSO session expired`, 'answers for other profiles are ignored');
 });
+
+test('agent picker: search by name or description, pick by mouse or keyboard', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const key = (k) => {
+    const event = new p.window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+    $('agentSearch').dispatchEvent(event);
+    return event;
+  };
+  const search = (text) => {
+    $('agentSearch').value = text;
+    $('agentSearch').dispatchEvent(new p.window.Event('input'));
+  };
+  const rows = () => [...$('agentList').querySelectorAll('.agent-option')];
+  const names = () => rows().map((r) => r.querySelector('.name').textContent);
+
+  assert.strictEqual($('agentSelect').hidden, true, 'the native select is only the model');
+  assert.strictEqual($('agentName').textContent, 'demo-a2a');
+  assert.strictEqual($('agentPicker').hidden, true);
+
+  $('agentBtn').click();
+  assert.strictEqual($('agentPicker').hidden, false);
+  assert.strictEqual($('agentBtn').getAttribute('aria-expanded'), 'true');
+  assert.strictEqual(p.document.activeElement, $('agentSearch'), 'search box focused');
+  assert.strictEqual($('agentSearch').placeholder, 'Search 3 agents...');
+  assert.deepStrictEqual(names(), ['demo-a2a', 'demo-http-strands', 'demo-unknown']);
+  assert.deepStrictEqual(rows().map((r) => r.querySelector('.proto').textContent), ['A2A', 'HTTP', '?']);
+  assert.ok(rows()[0].classList.contains('current') && rows()[0].classList.contains('active'), 'starts on the current agent');
+  assert.strictEqual(rows()[1].querySelector('.desc').textContent, 'Mock Strands agent over HTTP (SSE streaming)');
+
+  // Name match, case-insensitive, highlighted
+  search('HTTP-S');
+  assert.deepStrictEqual(names(), ['demo-http-strands']);
+  assert.strictEqual(rows()[0].querySelector('.name mark').textContent, 'http-s');
+  // Description match
+  search('json-rpc');
+  assert.deepStrictEqual(names(), ['demo-a2a']);
+  assert.strictEqual(rows()[0].querySelector('.desc mark').textContent, 'JSON-RPC');
+  // Nothing matches
+  search('zzz');
+  assert.strictEqual(rows().length, 0);
+  assert.match($('agentList').textContent, /No agents match/);
+  const refreshes = p.sent.filter((m) => m.action === 'list_agents' && m.refresh).length;
+  $('agentList').querySelector('.link').click();
+  assert.strictEqual(p.sent.filter((m) => m.action === 'list_agents' && m.refresh).length, refreshes + 1);
+  assert.strictEqual($('agentPicker').hidden, true);
+  await p.ready();
+
+  // Keyboard: ↓ wraps around, Enter picks
+  $('agentBtn').click();
+  search('demo');
+  key('ArrowUp');
+  assert.ok(rows()[2].classList.contains('active'), '↑ from the first row wraps to the last');
+  key('ArrowDown');
+  key('ArrowDown');
+  assert.ok(rows()[1].classList.contains('active'));
+  assert.ok(key('Enter').defaultPrevented);
+  assert.strictEqual($('agentPicker').hidden, true);
+  assert.strictEqual($('agentName').textContent, 'demo-http-strands');
+  assert.strictEqual(p.empty().querySelector('h2').textContent, 'demo-http-strands', 'main.js saw the change');
+  assert.strictEqual(p.document.activeElement, $('agentBtn'));
+
+  // Mouse: click a row
+  $('agentBtn').click();
+  rows()[2].click();
+  assert.strictEqual($('agentName').textContent, 'demo-unknown');
+
+  // Esc closes the picker only; a click outside closes it too
+  p.pick('demo-http-strands');
+  assert.strictEqual($('agentName').textContent, 'demo-http-strands', 'chip follows the select');
+  p.type('slow');
+  $('agentBtn').click();
+  key('Escape');
+  assert.strictEqual($('agentPicker').hidden, true);
+  assert.ok(!p.sent.some((m) => m.action === 'cancel'), 'Esc in the picker does not stop the reply');
+  $('agentBtn').click();
+  p.$('chat').dispatchEvent(new p.window.MouseEvent('mousedown', { bubbles: true }));
+  assert.strictEqual($('agentPicker').hidden, true);
+
+  // Picking another agent mid-chat starts a new chat, as before
+  $('agentBtn').click();
+  rows()[0].click();
+  assert.strictEqual(p.bubbles().length, 0);
+  assert.ok(p.sent.some((m) => m.action === 'reset_session'));
+});
+
+test('agent picker: empty states and untrusted text', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+
+  p.post({ type: 'agents', profile: $('profileSelect').value, data: [] });
+  await sleep(10);  // the picker follows the select after the DOM update
+  assert.strictEqual($('agentName').textContent, 'No agents found');
+  assert.ok($('agentBtn').disabled, 'nothing to pick');
+  $('agentBtn').click();
+  assert.strictEqual($('agentPicker').hidden, true);
+
+  const evil = '<img src=x onerror=alert(1)>';
+  p.post({ type: 'agents', profile: $('profileSelect').value, data: [
+    { name: evil, arn: 'arn:1', description: '<b>bold</b> <script>alert(2)</script>', protocol: 'A2A' }
+  ] });
+  await sleep(10);
+  assert.ok(!$('agentBtn').disabled);
+  assert.strictEqual($('agentName').textContent, evil);
+  $('agentBtn').click();
+  const searchFor = (text) => {
+    $('agentSearch').value = text;
+    $('agentSearch').dispatchEvent(new p.window.Event('input'));
+  };
+  searchFor('img');
+  const row = $('agentList').querySelector('.agent-option');
+  assert.strictEqual(row.querySelector('.name').textContent, evil);
+  assert.strictEqual(row.querySelector('.desc').textContent, '<b>bold</b> <script>alert(2)</script>');
+  assert.strictEqual(p.document.querySelectorAll('#agentList img, #agentList b, #agentList script').length, 0);
+  assert.strictEqual($('agentSearch').placeholder, 'Search 1 agent...');
+});

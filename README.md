@@ -4,7 +4,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 
 ## Features
 
-- **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents).
+- **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents). With many agents, **search** the list by name or description.
 - **HTTP and A2A.** A toggle under the message box switches protocol per agent; it starts on the detected one (marked with a dot) and remembers your choice.
 - **Streaming replies with Markdown**: headings, lists, quotes, links and code blocks with a language label.
 - **Code blocks you can use**: Copy, Insert at Cursor, Open in New File, and for shell commands Insert into Terminal (it never runs the command for you).
@@ -25,7 +25,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 1. Install the extension (`Extensions` view → `...` → **Install from VSIX...**).
 2. Open the chat: click **AgentCore Chat** in the Secondary Side Bar on the right, or run **AgentCore: Open Chat** from the Command Palette.
 3. Pick your **AWS profile** at the top. If your SSO session has expired, click **Run aws sso login** in the banner.
-4. Pick an **agent** under the message box, type your question and press **Enter** (**Shift+Enter** for a new line).
+4. Pick an **agent**: click the agent name under the message box and type part of its name or description to search (↑/↓ and Enter work too). Type your question and press **Enter** (**Shift+Enter** for a new line).
 
 ### Where the chat lives
 

@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - **A2A agents** next to HTTP agents: JSON-RPC `message/send` and `message/stream`, tasks and artifacts, follow-up questions (input-required), and conversations that keep their context.
 - **Protocol toggle** (HTTP / A2A) under the message box: starts on the protocol detected from the agent and remembers manual choices per agent. Switching mid-chat asks first, then starts a new chat.
 - **Agent list** from `ListAgentRuntimes` with each agent's protocol (`GetAgentRuntime`); MCP and AG-UI runtimes are hidden; cached for five minutes with a refresh button.
+- **Searchable agent picker**: filter agents by name or description, with keyboard support, for accounts with many agents.
 - **Agent Cards** for A2A agents: version, skills and example prompts on the welcome screen.
 - **Setting `agentcore.a2aStreaming`**: `auto` (default) streams when the Agent Card says the agent can; `on` / `off` force it.
 - **Markdown replies**, rendered while they stream in: headings, emphasis, lists, quotes, links (opened in the browser after VS Code asks) and code blocks.

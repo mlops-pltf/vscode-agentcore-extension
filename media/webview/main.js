@@ -108,7 +108,7 @@
     if (!msg.data.length) {
       setPlaceholder(agentSelect, 'No agents found');
     } else {
-      setOptions(agentSelect, msg.data.map((a) => ({ value: a.arn, label: a.name, title: a.description })));
+      setOptions(agentSelect, msg.data.map((a) => ({ value: a.arn, label: a.name, title: a.description, data: { protocol: a.protocol } })));
       // Keep the selected agent across a refresh
       if (agents.has(currentAgentArn)) agentSelect.value = currentAgentArn;
     }
@@ -387,6 +387,15 @@
     }
   });
   chatView.initScroll(chat, $('jumpBtn'));
+  app.picker.create({
+    select: agentSelect,
+    button: $('agentBtn'),
+    label: $('agentName'),
+    popup: $('agentPicker'),
+    input: $('agentSearch'),
+    list: $('agentList'),
+    onRefresh: () => loadAgents(true)
+  });
 
   showSettings();
   updateBusy();
