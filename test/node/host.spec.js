@@ -60,6 +60,13 @@ test("Python's log lines go to the Output channel only; old a2aStreaming values 
     state.config.a2aStreaming = stored;
     assert.strictEqual(readSettings().a2aStreaming, expected, String(stored));
   }
+  assert.strictEqual(readSettings().jsonReplies, 'full', 'default');
+  state.config.jsonReplies = 'raw';
+  state.config.jsonHiddenFields = ['internal', 5];
+  assert.strictEqual(readSettings().jsonReplies, 'raw');
+  assert.deepStrictEqual(readSettings().jsonHiddenFields, ['internal']);
+  state.config.jsonReplies = 'bogus';
+  assert.strictEqual(readSettings().jsonReplies, 'full');
 });
 
 test('settings changes: webview told; pythonPath change restarts Python', async (t) => {

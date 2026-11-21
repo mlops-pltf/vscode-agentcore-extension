@@ -20,7 +20,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
-from agentcore import cards
+from agentcore import cards, json_markdown
 from agentcore.errors import AgentCoreError
 from agentcore.events import Emitter
 from agentcore.protocols.base import AgentProtocol, InvokeContext
@@ -55,7 +55,7 @@ class A2aProtocol(AgentProtocol):
         return json.dumps(request).encode("utf-8")
 
     def handle(self, response: AgentResponse, emitter: Emitter, ctx: InvokeContext) -> dict:
-        turn = _Turn(emitter)
+        turn = _Turn(emitter, ctx.settings)
         for event in response.events():
             turn.envelope(event.value)
 
@@ -67,6 +67,9 @@ class A2aProtocol(AgentProtocol):
 
         meta = {"contentType": response.content_type, "taskState": turn.state,
                 "streamed": response.content_type == "text/event-stream"}
+        raw = json_markdown.raw_json(turn.data_shown) if turn.data_shown else None
+        if raw:
+            meta["rawJson"] = raw
         if turn.context_id:
             meta["contextId"] = turn.context_id
         if turn.task_id:
@@ -77,8 +80,11 @@ class A2aProtocol(AgentProtocol):
 class _Turn:
     """What one reply has shown so far, so nothing is printed twice."""
 
-    def __init__(self, emitter: Emitter):
+    def __init__(self, emitter: Emitter, settings: Optional[dict] = None):
         self.emitter = emitter
+        self.json_mode = json_markdown.mode(settings or {})
+        self.hidden = json_markdown.hidden_fields(settings or {})
+        self.data_shown: List[Any] = []  # data parts shown as Markdown, for "Open raw JSON"
         self.context_id: Optional[str] = None
         self.task_id: Optional[str] = None
         self.state: Optional[str] = None
@@ -90,6 +96,16 @@ class _Turn:
         if text:
             self.emitter.chunk(text)
             self.emitted = True
+
+    def data_text(self, data: Any) -> str:
+        """Structured data (data parts, unknown results) per agentcore.jsonReplies."""
+        if self.json_mode == "full":
+            self.data_shown.append(data)
+            return json_markdown.render(data, self.hidden) or json_markdown.json_block(data)
+        return json_markdown.json_block(data)
+
+    def parts_text(self, parts: Optional[List[dict]]) -> str:
+        return parts_to_text(parts, self.data_text)
 
     def envelope(self, value: Any) -> None:
         if isinstance(value, str):
@@ -110,7 +126,7 @@ class _Turn:
         self.context_id = result.get("contextId") or self.context_id
         if kind == "message":
             self.task_id = result.get("taskId") or self.task_id
-            self.chunk(parts_to_text(result.get("parts")))
+            self.chunk(self.parts_text(result.get("parts")))
         elif kind == "task":
             self.task_id = result.get("id") or self.task_id
             self.task(result)
@@ -121,7 +137,7 @@ class _Turn:
             self.task_id = result.get("taskId") or self.task_id
             self.artifact(result.get("artifact") or {}, append=result.get("append", False))
         else:
-            self.chunk("```json\n" + json.dumps(result, indent=2) + "\n```")
+            self.chunk(self.data_text(result))
 
     def task(self, task: dict) -> None:
         # A stream may end with a full Task snapshot: skip artifacts already streamed
@@ -137,7 +153,7 @@ class _Turn:
         state = status.get("state")
         if state:
             self.state = state
-        text = parts_to_text((status.get("message") or {}).get("parts"))
+        text = self.parts_text((status.get("message") or {}).get("parts"))
         if state in FAILED_STATES:
             self.failure = f"Agent task {state}" + (f": {text}" if text else "")
         elif state in WAITING_STATES or (final and not self.emitted):
@@ -148,7 +164,7 @@ class _Turn:
 
     def artifact(self, artifact: dict, append: bool) -> None:
         artifact_id = artifact.get("artifactId") or "artifact"
-        text = parts_to_text(artifact.get("parts"))
+        text = self.parts_text(artifact.get("parts"))
         new_artifact = artifact_id not in self.artifacts_seen
         self.artifacts_seen[artifact_id] = True
         if new_artifact and not append and self.emitted and text:
@@ -156,15 +172,17 @@ class _Turn:
         self.chunk(text)
 
 
-def parts_to_text(parts: Optional[List[dict]]) -> str:
-    """Render A2A parts: text as-is, data as a JSON block, files as a reference."""
+def parts_to_text(parts: Optional[List[dict]], data_text=None) -> str:
+    """Render A2A parts: text as-is, data via data_text (default: a JSON block),
+    files as a reference."""
     pieces = []
     for part in parts or []:
         kind = part.get("kind") or part.get("type")
         if kind == "text":
             pieces.append(part.get("text", ""))
         elif kind == "data":
-            pieces.append("\n```json\n" + json.dumps(part.get("data"), indent=2) + "\n```\n")
+            data = part.get("data")
+            pieces.append("\n" + (data_text(data) if data_text else json_markdown.json_block(data)) + "\n")
         elif kind == "file":
             file = part.get("file") or {}
             where = file.get("uri") or ("embedded" if file.get("bytes") else "no content")

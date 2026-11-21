@@ -12,7 +12,7 @@ const rules = {
 
 export default [
     {
-        ignores: ["node_modules/**", ".venv/**", ".vscode-test/**"],
+        ignores: ["**/node_modules/**", "**/.venv/**", ".vscode-test/**"],
     },
     {
         // Extension host and tests: Node (CommonJS)

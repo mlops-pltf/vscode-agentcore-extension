@@ -65,6 +65,23 @@
           "default": "auto",
           "markdownDescription": "How to call **A2A** agents: `message/stream` (live status and streamed text) or `message/send` (one answer). `auto` follows the agent's Agent Card (needs `bedrock-agentcore:GetAgentCard`; without it, `auto` sends)."
         },
+        "agentcore.jsonReplies": {
+          "type": "string",
+          "enum": ["full", "text", "raw"],
+          "enumDescriptions": [
+            "The main text, then every other field as readable Markdown (lists, tables)",
+            "Only the main text (message, result, response...)",
+            "The whole reply as a JSON block"
+          ],
+          "default": "full",
+          "markdownDescription": "How to show agent replies that are **JSON**. Also used for A2A data parts and the extra fields of a stream's final event."
+        },
+        "agentcore.jsonHiddenFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "markdownDescription": "Field names to leave out when showing JSON replies as Markdown (any level, case-insensitive), in addition to the built-in ones (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency)."
+        },
         "agentcore.debugRawResponses": {
           "type": "boolean",
           "default": false,

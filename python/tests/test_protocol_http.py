@@ -70,10 +70,14 @@ class JsonFixturesTest(unittest.TestCase):
         self.assertEqual(str(raised.exception), "Agent error: ThrottlingException: model throttled")
         self.assertEqual(emitter.text, "Looking that up now...", "text before the error is kept")
 
-    def test_unknown_shape_is_shown_as_json_block(self):
-        text = run(fixture_response("http/unknown_shape.json"))[0].text
-        self.assertTrue(text.startswith("```json\n") and text.endswith("\n```"), text)
-        self.assertIn('"status": "ok"', text)
+    def test_unknown_shape_is_shown_as_markdown_or_json_block(self):
+        emitter, meta = run(fixture_response("http/unknown_shape.json"))
+        self.assertEqual(emitter.text, "**Status:** ok\n\n**Items**\n\n- 1\n- 2")
+        self.assertEqual(json.loads(meta["rawJson"]), {"status": "ok", "items": [1, 2]})
+        for json_mode in ("text", "raw"):
+            emitter = RecordingEmitter()
+            handle(HTTP, fixture_response("http/unknown_shape.json"), emitter, ctx=context(jsonReplies=json_mode))
+            self.assertTrue(emitter.text.startswith("```json\n") and emitter.text.endswith("\n```"), json_mode)
 
     def test_charset_in_content_type(self):
         emitter, meta = run(fixture_response("http/generic_response.json", "application/json; charset=utf-8"))

@@ -312,7 +312,7 @@
     },
     done(msg) {
       const meta = msg.meta || {};
-      const reply = finish(msg.requestId, { footer: chatView.footerText(meta), trace: meta });
+      const reply = finish(msg.requestId, { footer: chatView.footerText(meta), trace: meta, rawJson: meta.rawJson });
       if (!reply) return;
       const waiting = meta.taskState === 'input-required' || meta.taskState === 'auth-required';
       // Keep "Agent is waiting for your input"; drop progress lines like "Thinking..."

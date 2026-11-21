@@ -663,3 +663,64 @@ test('agent picker: empty states and untrusted text', async (t) => {
   assert.strictEqual(p.document.querySelectorAll('#agentList img, #agentList b, #agentList script').length, 0);
   assert.strictEqual($('agentSearch').placeholder, 'Search 1 agent...');
 });
+
+test('JSON replies: shown whole as Markdown, with Open raw JSON', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const editorOps = () => p.sent.filter((m) => m.type === 'editor');
+  p.pick('demo-http-strands');
+
+  p.type('structured please');
+  await until(p.idle);
+  const text = p.part(p.last(), 'text');
+  assert.strictEqual(text.querySelector('p').textContent, 'Deployed billing-service to dev.');
+  assert.ok(text.textContent.includes('Status: success'));
+  assert.deepStrictEqual([...text.querySelectorAll('th')].map((th) => th.textContent), ['Title', 'Url']);
+  assert.deepStrictEqual([...text.querySelectorAll('ul li')].map((li) => li.textContent), ['Run the smoke tests', 'Promote to prod']);
+  assert.ok(!text.textContent.includes('inputTokens'), 'plumbing hidden');
+  assert.strictEqual(text.querySelectorAll('a').length, 2, 'URLs in the table are links');
+
+  const button = [...p.last().querySelectorAll('.reply-actions button')].find((b) => b.getAttribute('aria-label') === 'Open raw JSON');
+  button.click();
+  const op = editorOps().pop();
+  assert.strictEqual(op.op, 'newFile');
+  assert.strictEqual(op.language, 'json');
+  assert.deepStrictEqual(Object.keys(JSON.parse(op.text)).slice(0, 3), ['message', 'status', 'confidence'], 'the original, including hidden fields');
+  assert.ok(JSON.parse(op.text).usage);
+
+  // A2A: a text part plus a data part
+  p.pick('demo-a2a');
+  p.type('structured please');
+  await until(p.idle);
+  const a2a = p.part(p.last(), 'text');
+  assert.ok(a2a.textContent.startsWith('Deployed billing-service to dev.'));
+  assert.ok(a2a.querySelector('table'));
+  assert.ok([...p.last().querySelectorAll('.reply-actions button')].some((b) => b.getAttribute('aria-label') === 'Open raw JSON'));
+
+  // A plain reply has no raw JSON button
+  p.type('hi');
+  await until(p.idle);
+  assert.ok(![...p.last().querySelectorAll('.reply-actions button')].some((b) => b.getAttribute('aria-label') === 'Open raw JSON'));
+});
+
+test('JSON replies: text and raw modes', async (t) => {
+  const p = openPanel({ settings: { ...MOCK_SETTINGS, jsonReplies: 'text' } });
+  t.after(p.close);
+  await p.ready();
+  p.pick('demo-http-strands');
+  p.type('structured please');
+  await until(p.idle);
+  assert.strictEqual(p.part(p.last(), 'text').textContent, 'Deployed billing-service to dev.');
+  p.close();
+
+  const q = openPanel({ settings: { ...MOCK_SETTINGS, jsonReplies: 'raw' } });
+  t.after(q.close);
+  await q.ready();
+  q.pick('demo-http-strands');
+  q.type('structured please');
+  await until(q.idle);
+  const block = q.part(q.last(), 'text').querySelector('.code-block');
+  assert.strictEqual(block.querySelector('.lang').textContent, 'json');
+  assert.ok(block.querySelector('code').textContent.includes('"usage"'), 'raw shows everything');
+});

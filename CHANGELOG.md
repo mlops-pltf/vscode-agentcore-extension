@@ -21,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Identity at a glance**: the profile picker's tooltip shows your user, account and region.
 - **Runtime user**: your SSO identity is sent as `runtimeUserId`.
 - **Composer**: Stop (or Esc), "Thinking · Ns" while waiting, ↑ recalls the last prompt, smart scrolling with "Jump to latest".
+- **JSON replies shown whole** (`agentcore.jsonReplies`, default `full`): the main text, then the other fields as Markdown (lists, tables), with hidden plumbing fields (`agentcore.jsonHiddenFields`) and an **Open raw JSON** button.
 - **Agent errors mid-stream** (`{"error": ..., "error_type": ...}`, as sent by `BedrockAgentCoreApp`) end the reply with an error and Retry instead of showing as text.
 - **Sample agent** (`samples/http-agent`) built with `BedrockAgentCoreApp` and Strands, and an agent reply format guide (`docs/AGENT_REPLY_FORMAT.md`).
 - **Mock mode** (`agentcore.mock`) with demo agents and scenarios (`markdown`, `slow`, `json`, `tool`, `input`, `fail`, `rpcerror`, `error`).

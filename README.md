@@ -40,6 +40,8 @@ The chat opens as a tab in the **Secondary Side Bar** (on the right, next to Git
 |---|---|---|
 | `agentcore.region` | `eu-central-1` | AWS region for AgentCore. Clear it to use the region from your AWS profile. |
 | `agentcore.a2aStreaming` | `auto` | How to call A2A agents. `auto`: stream (`message/stream`) when the agent's Agent Card says it can, otherwise one answer (`message/send`). `on` / `off` force one or the other. |
+| `agentcore.jsonReplies` | `full` | How to show JSON replies. `full`: the main text, then every other field as readable Markdown (lists, tables). `text`: only the main text. `raw`: the whole reply as a JSON block. |
+| `agentcore.jsonHiddenFields` | `[]` | Field names to leave out of JSON replies, besides the built-in ones (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency). |
 | `agentcore.mock` | `false` | Use the built-in mock AgentCore instead of AWS (demos and development). |
 | `agentcore.pythonPath` | `python3` | Python to run the backend with. Leave as is to let the extension manage its own environment; set a path to use your own (it needs `boto3`). |
 | `agentcore.debugRawResponses` | `false` | Write every raw agent response line to the Output channel, e.g. to capture real responses as test fixtures. May log sensitive content. |
@@ -101,7 +103,7 @@ AgentCore passes agent responses through as the agent wrote them, so the extensi
 - **HTTP agents** get `{"prompt": "..."}`. Replies can be Server-Sent Events (e.g. Strands streaming events) or a single JSON or text body.
 - **A2A agents** get a JSON-RPC 2.0 `message/send` or `message/stream` call. Replies can be a Message, a Task (with artifacts), and status or artifact updates. The conversation's `contextId` is sent back on every turn; if the agent asks for input, your next message answers that task.
 
-If an agent replies in a shape the extension doesn't recognise, the reply is shown as JSON rather than lost.
+**JSON replies are shown whole**: the main text first, then the other fields (status, sources, scores...) as readable Markdown, with an **Open raw JSON** button on the reply. Nothing an agent sends is lost; `agentcore.jsonReplies` switches this to text-only or raw JSON.
 
 ## Mock mode
 
@@ -109,7 +111,8 @@ Set `agentcore.mock` to `true`. The chat shows a **MOCK** badge and lists three 
 
 | Word | What happens |
 |---|---|
-| `markdown` | a Markdown sample: headings, lists, code blocks, links |
+| `markdown` | a Markdown sample: headings, lists, a table, code blocks, links |
+| `structured` | a JSON reply with a message and other fields (see `agentcore.jsonReplies`) |
 | `slow` | one second between streamed lines, or 3 seconds before a one-piece answer (try Stop and the timer) |
 | `json` | HTTP agent answers with one JSON body instead of a stream |
 | `tool` | the agent reports a tool call first |

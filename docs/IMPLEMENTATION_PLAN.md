@@ -343,6 +343,17 @@ User requests: "add the doc" (what agents should return), "tables like |Day|Focu
 
 *Done 2026-11-21 (tests and mock); deploying the sample is for the office.* *Done when:* tables render in the chat; the sample's stream is read correctly by the extension (tests); at the office, the deployed sample answers in the chat with tool status, Markdown and a table.
 
+### Phase 10: Whole JSON replies as Markdown (added 2026-11-21)
+
+User request: show the entire JSON reply converted to Markdown, not only its message field, "otherwise I have to ask people to rewrite all the agents". User chose the proposed defaults. Built before seeing real replies, so every rule is one small function in `json_markdown.py`, to adjust when real examples arrive (as fixtures).
+
+- [x] **T10.1** `python/agentcore/json_markdown.py`: JSON to Markdown. The main text (the field we already recognise) first, as Markdown; then the other fields: single values as `**Key:** value` (keys made readable: `source_documents` -> "Source documents"), lists of single values as bullets, lists of similar objects as a table, nested objects under a bold label, deeper than 3 levels as a JSON block. Hidden fields (any level, case-insensitive): a built-in list (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency) plus the new setting `agentcore.jsonHiddenFields`.
+- [x] **T10.2** Setting `agentcore.jsonReplies`: `full` (default: main text + other fields), `text` (old behaviour: main text only), `raw` (always a JSON block). Applies to one-piece JSON replies (HTTP), the extra fields of a stream's **final** event (`result` / assistant `message`; per-token events are never expanded), and A2A `data` parts.
+- [x] **T10.3** "Open raw JSON": replies built from JSON carry it in `done.meta.rawJson` (capped at 200 KB); the reply gets a button that opens it in a new JSON editor tab (the existing `newFile` editor action).
+- [x] **T10.4** Mock keyword `structured` (HTTP: one-piece JSON with message, status, confidence, sources, nested details and hidden metrics; A2A: a text part plus a data part), tests (converter rules, settings, HTTP/A2A paths, panel button), README/CHANGELOG and the reply format guide.
+
+*Done 2026-11-21 (tests and mock); rules still to tune with real replies from the office.* Also fixed: ESLint now ignores every `.venv` (the sample agent's venv came in with Phase 9). *Done when:* with the mock, `structured` shows all fields readably in `full`, only the message in `text`, a JSON block in `raw`, and "Open raw JSON" opens the original; at the office, real agents' JSON replies read well (send examples to tune the rules).
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

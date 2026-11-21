@@ -74,7 +74,16 @@ Forwarding only these two keys is cleaner than yielding raw Strands events, whic
 "The answer"
 ```
 
-A `text/plain` body is shown as is. A JSON shape the chat doesn't recognise is shown as a formatted JSON block: nothing is lost, but it looks raw.
+A `text/plain` body is shown as is.
+
+**Extra fields are shown too** (setting `agentcore.jsonReplies`, default `full`): the main text comes first, then every other field as readable Markdown, so agents don't need to squeeze everything into one message:
+
+```json
+{"message": "Deployed.", "status": "success",
+ "sources": [{"title": "Runbook", "url": "https://..."}], "next_steps": ["Run smoke tests"]}
+```
+
+becomes "Deployed.", then **Status:** success, a *Sources* table and a *Next steps* list. Single values become `Key: value` lines, lists of single values bullets, lists of similar objects tables, nested objects a labelled section (deeper than three levels: a JSON block). Plumbing fields such as `role`, `usage`, `metrics`, token counts and trace/session ids are hidden (more with `agentcore.jsonHiddenFields`), and the reply's **Open raw JSON** button shows the original. In a stream, the same applies to the extra fields of the **final** event (`result` or the assistant `message`), shown after the streamed text; per-token events are never expanded.
 
 ### Both ways
 
@@ -94,7 +103,7 @@ Follow the A2A protocol (JSON-RPC 2.0). The chat sends `message/send`, or `messa
 | `status.state: "input-required"` with your question in `status.message` | Your question as the reply, plus "Agent is waiting for your input"; the user's next message continues the same task. |
 | `"failed"` / `"rejected"` with the reason in `status.message` | A red error with that reason, and Retry. |
 | A JSON-RPC `error` | "A2A error <code>: <message>". |
-| `{"kind": "data", "data": {...}}` parts | A formatted JSON block. |
+| `{"kind": "data", "data": {...}}` parts | Readable Markdown, like JSON replies above (or a JSON block with `jsonReplies = raw`). |
 | `{"kind": "file", ...}` parts | "📎 name (uri)". |
 
 - **Conversation**: keep the same `contextId` across turns; the chat sends it back on every message.

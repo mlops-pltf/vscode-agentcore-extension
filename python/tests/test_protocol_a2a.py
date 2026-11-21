@@ -82,10 +82,14 @@ class SendFixturesTest(unittest.TestCase):
         self.assertEqual(meta["contextId"], "ctx-old")
 
     def test_data_and_file_parts(self):
-        text = run(fixture_response("a2a/data_and_file_parts.json"))[0].text
-        self.assertTrue(text.startswith("Report:\n```json\n"), text)
-        self.assertIn('"rows": 2', text)
-        self.assertIn("📎 report.csv (s3://bucket/report.csv)", text)
+        emitter, meta, _ = run(fixture_response("a2a/data_and_file_parts.json"))
+        self.assertEqual(emitter.text, "Report:\n**Rows:** 2\n\n📎 report.csv (s3://bucket/report.csv)\n")
+        self.assertEqual(json.loads(meta["rawJson"]), {"rows": 2})
+
+        emitter, meta, _ = run(fixture_response("a2a/data_and_file_parts.json"), jsonReplies="raw")
+        self.assertTrue(emitter.text.startswith("Report:\n```json\n"), emitter.text)
+        self.assertIn('"rows": 2', emitter.text)
+        self.assertNotIn("rawJson", meta)
 
 
 class StreamFixturesTest(unittest.TestCase):

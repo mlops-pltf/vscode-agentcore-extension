@@ -218,9 +218,10 @@
   }
 
   // End a reply: render the final text, then add an error line, the footer and
-  // the actions: Copy when there is text; Copy trace ID and Open in CloudWatch
-  // when trace = {traceId, cloudwatchUrl} is known; Retry when it failed
-  function finishReply(reply, { footer, error, trace, onRetry } = {}) {
+  // the actions: Copy when there is text; Open raw JSON when the reply was built
+  // from JSON; Copy trace ID and Open in CloudWatch when trace = {traceId,
+  // cloudwatchUrl} is known; Retry when it failed
+  function finishReply(reply, { footer, error, trace, rawJson, onRetry } = {}) {
     stopTimer(reply);
     if (reply.received) {
       renderReply(reply);
@@ -233,6 +234,10 @@
       reply.footer.hidden = false;
     }
     if (reply.received) reply.actions.appendChild(copyButton('Copy reply', () => reply.markdown));
+    if (rawJson) {
+      reply.actions.appendChild(iconButton('json', 'Open raw JSON',
+        () => options.onEditor('newFile', { text: rawJson, language: 'json' })));
+    }
     if (trace && trace.traceId) {
       reply.actions.appendChild(copyButton(`Copy trace ID (${trace.traceId})`, () => trace.traceId, 'trace'));
       if (trace.cloudwatchUrl) {

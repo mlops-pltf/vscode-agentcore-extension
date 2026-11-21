@@ -14,6 +14,8 @@ Keywords in the prompt pick a scenario:
   fail      A2A task ends in the failed state
   rpcerror  A2A agent returns a JSON-RPC error
   markdown  the reply is a Markdown sample (headings, lists, a table, code, links)
+  structured  the reply is JSON with a message and other fields (HTTP: one JSON
+            body; A2A: a text part plus a data part), see agentcore.jsonReplies
 """
 import json
 import threading
@@ -129,6 +131,23 @@ MOCK_AGENT_CARD = {
 }
 
 
+# A JSON reply with more than a message (Phase 10): status, nested object, a list
+# of objects (table), a list of strings, and plumbing that is hidden by default
+STRUCTURED_REPLY = {
+    "message": "Deployed **billing-service** to `dev`.",
+    "status": "success",
+    "confidence": 0.92,
+    "environment": {"name": "dev", "region": "eu-central-1", "healthy": True},
+    "sources": [
+        {"title": "Deployment runbook", "url": "https://example.com/runbook"},
+        {"title": "Change ticket CHG-1234", "url": "https://example.com/changes/1234"},
+    ],
+    "next_steps": ["Run the smoke tests", "Promote to prod"],
+    "metrics": {"latencyMs": 1830},
+    "usage": {"inputTokens": 412, "outputTokens": 96},
+}
+
+
 def get_agent_card(profile: str, agent_arn: str, region: Optional[str] = None) -> dict:
     if "demo_a2a" not in agent_arn:
         raise AgentCoreError("ResourceNotFoundException: this mock agent publishes no Agent Card")
@@ -183,6 +202,16 @@ def _invoke(agent_arn: str, payload: bytes) -> dict:
         reply = MARKDOWN_SAMPLE
         if delay == FAST_DELAY:
             delay = FAST_DELAY / 4  # a long reply; still visibly streaming
+
+    if "structured" in words:
+        if not is_a2a:
+            return _json(STRUCTURED_REPLY, one_piece_delay)
+        context_id, task_id = _ids(request)
+        data = {k: v for k, v in STRUCTURED_REPLY.items() if k != "message"}
+        message = _agent_message(STRUCTURED_REPLY["message"], context_id, task_id)
+        message["parts"].append({"kind": "data", "data": data})
+        envelope = _envelope(request, message)
+        return _sse([envelope], delay) if request.get("method") == "message/stream" else _json(envelope, one_piece_delay)
 
     if is_a2a:
         task_id = request.get("params", {}).get("message", {}).get("taskId")

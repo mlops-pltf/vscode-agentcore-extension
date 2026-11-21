@@ -15,6 +15,8 @@ function readSettings() {
     mock: config.get('mock') === true,
     region: config.get('region') || '',
     a2aStreaming: streamingMode(config.get('a2aStreaming')),
+    jsonReplies: ['full', 'text', 'raw'].includes(config.get('jsonReplies')) ? config.get('jsonReplies') : 'full',
+    jsonHiddenFields: (config.get('jsonHiddenFields') || []).filter((name) => typeof name === 'string'),
     debugRaw: config.get('debugRawResponses') === true
   };
 }
