@@ -5,7 +5,9 @@ and replies with JSON events on stdout (see agentcore/events.py).
 """
 import json
 import sys
-from typing import Optional
+import threading
+import uuid
+from typing import Dict, Optional
 
 import boto3
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
@@ -53,12 +55,32 @@ def list_agents(cmd: dict):
         send({"type": "error", "message": str(e)})
 
 
+# In-flight invocations by requestId
+_active: Dict[str, threading.Thread] = {}
+_active_lock = threading.Lock()
+
+
 def invoke_agent(cmd: dict):
-    emitter = Emitter(cmd.get("requestId"))
-    emitter.chunk('Fisrt chunk...\n')
-    emitter.chunk('Second chunk...\n')
-    emitter.chunk('Last chunk...\n')
-    emitter.done()
+    # Run on a worker thread so the stdin loop stays free for cancel/other requests
+    request_id = cmd.get("requestId") or str(uuid.uuid4())
+    thread = threading.Thread(target=_run_invoke, args=(cmd, request_id), daemon=True)
+    with _active_lock:
+        _active[request_id] = thread
+    thread.start()
+
+
+def _run_invoke(cmd: dict, request_id: str):
+    emitter = Emitter(request_id)
+    try:
+        emitter.chunk('Fisrt chunk...\n')
+        emitter.chunk('Second chunk...\n')
+        emitter.chunk('Last chunk...\n')
+        emitter.done()
+    except Exception as e:
+        emitter.error(f"{type(e).__name__}: {e}")
+    finally:
+        with _active_lock:
+            _active.pop(request_id, None)
 
 
 HANDLERS = {
@@ -82,6 +104,12 @@ def main():
             handler(cmd)
         except Exception as e:
             send({"type": "error", "message": f"Bridge error: {e}"})
+
+    # stdin closed: let in-flight replies finish before exiting
+    with _active_lock:
+        threads = list(_active.values())
+    for thread in threads:
+        thread.join()
 
 
 if __name__ == "__main__":
