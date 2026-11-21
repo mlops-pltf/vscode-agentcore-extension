@@ -230,15 +230,15 @@ Done in three rounds, each on branch `phase-6-webview`, tested by the user and c
 
 #### Round 6c: Polish
 
-- [ ] **T6.9** Redesign Send as an icon button with a **right-pointing arrow** (inline SVG, `currentColor`, with `title`/`aria-label` "Send"); Stop is a square icon in the same spot.
-- [ ] **T6.10** Let the chat live on the **right side** (Secondary Side Bar, next to where Copilot Chat sits), or let the user choose. *Approach to confirm:* contribute the view to the secondary side bar if the API supports it in VS Code 1.146; otherwise add an "AgentCore: Move Chat to Right Side" command and a README tip (users can also drag the view there).
-- [ ] **T6.11** Typing indicator: until the first `chunk` (or `status`) arrives, the agent bubble shows three softly bouncing dots instead of a static `...`. Respects `prefers-reduced-motion` (falls back to a gentle pulse/static dots).
+- [x] **T6.9** Redesign Send as an icon button with a **right-pointing arrow** (inline SVG, `currentColor`, with `title`/`aria-label` "Send"); Stop is a square icon in the same spot.
+- [x] **T6.10** Chat placement. *Decided (2026-11-21):* the chat lives in the **Secondary Side Bar (right)** by default, as a tab next to Copilot Chat, so all chats are in one place. No setting: users who prefer the left use **Move View** (VS Code remembers), and **Reset Location** returns it to the right. `engines.vscode` raised to `^1.147.0`, since that's the version confirmed to place extension containers in the Secondary Side Bar. A dual-registration + `agentcore.chatLocation` setting was tried and dropped as unnecessary. **AgentCore: Open Chat** focuses the view wherever it is, and Python is kept alive when VS Code re-creates the view after a move.
+- [x] **T6.11** Typing indicator: until the first `chunk` (or `status`) arrives, the agent bubble shows three softly bouncing dots instead of a static `...`. Respects `prefers-reduced-motion` (falls back to a gentle pulse/static dots).
 
 *Done when:* the arrow/stop button, typing dots and right-side placement work in both light and dark themes.
 
 ### Phase 7: Docs & verification
 
-- [ ] **T7.1** README: settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture.
+- [ ] **T7.1** README: settings table, how to use mock mode, how to capture a real response (`debugRawResponses`) and turn it into a fixture, and a tip on where the chat lives (right, as a tab next to Copilot Chat), moving it to the left (right-click → Move View, or drag) and back (right-click → Reset Location).
 - [ ] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
 - [ ] **T7.3** Manual test checklist (below) run in the Extension Development Host with `agentcore.mock=true`.
 - [ ] **T7.4** CHANGELOG entry.
