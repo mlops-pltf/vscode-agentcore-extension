@@ -247,11 +247,11 @@ Split into three sub-rounds (tested and committed one at a time):
 
 ##### 6d.1: Layout and look
 
-- [ ] **T6.12** Responsive layout. Nothing is cut off down to ~220 px wide: selects and labels shrink with ellipsis (`min-width: 0`), and icon buttons never shrink or wrap away. *(Bug: MOCK, ↻ and + disappeared in narrow panels.)*
-- [ ] **T6.13** Slim toolbar. One row: profile picker (compact), MOCK badge, icon buttons **Refresh** and **New chat** (inline SVG, tooltips). The SSO banner, hidden-agents note and backend banner sit below it.
-- [ ] **T6.14** Composer card: a rounded input card (focus ring in the theme's focus colour) with an auto-growing textarea (up to ~8 lines), placeholder "Ask *agent*…", and a footer row with the **agent chip** (picker), **protocol chip** (HTTP | A2A), a muted "⏎ send · ⇧⏎ new line" hint (hidden when narrow) and the Send/Stop icon.
-- [ ] **T6.15** Message design. User prompts are right-aligned subtle bubbles. Agent replies have no box: a small robot avatar and the agent name above full-width text, the footer muted underneath, and errors inline. New messages fade in gently (respecting reduced motion).
-- [ ] **T6.17** Empty state. When the chat is empty, show a welcome card with the robot icon, the agent's name, description and protocol, and 2–3 suggestion chips that fill the composer when clicked.
+- [x] **T6.12** Responsive layout. Nothing is cut off down to ~220 px wide: selects and labels shrink with ellipsis (`min-width: 0`), and icon buttons never shrink or wrap away. *(Bug: MOCK, ↻ and + disappeared in narrow panels.)*
+- [x] **T6.13** Slim toolbar. One row: profile picker (compact), MOCK badge, icon buttons **Refresh** and **New chat** (inline SVG, tooltips). The SSO banner, hidden-agents note and backend banner sit below it.
+- [x] **T6.14** Composer card: a rounded input card (focus ring in the theme's focus colour) with an auto-growing textarea (up to ~8 lines), placeholder "Ask *agent*…", and a footer row with the **agent chip** (picker), **protocol chip** (HTTP | A2A), a muted "⏎ send · ⇧⏎ new line" hint (hidden when narrow) and the Send/Stop icon.
+- [x] **T6.15** Message design. User prompts are right-aligned subtle bubbles. Agent replies have no box: a small robot avatar and the agent name above full-width text, the footer muted underneath, and errors inline. New messages fade in gently (respecting reduced motion).
+- [x] **T6.17** Empty state. When the chat is empty, show a welcome card with the robot icon, the agent's name, description and protocol, and 2–3 suggestion chips that fill the composer when clicked.
 
 *Done when:* at ~220 px wide every control is still usable; the toolbar, composer card (with agent and protocol chips), new message style and welcome screen look right in light and dark themes; all 6b behaviour still works (e2e checks updated).
 
