@@ -35,6 +35,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 | A8 | A2A conversation continuity comes from `contextId` (from the server, sent back on the next turn); `taskId` is sent back only when state is `input-required` | Med | State kept per `sessionId` in Python |
 | A9 | `runtimeSessionId` must be ≥33 chars | Low | UUID4 (36 chars) |
 | A10 | The SSO role-session name (last segment of the assumed-role ARN) identifies the user, and roles have `bedrock-agentcore:InvokeAgentRuntimeForUser` | Med: IAM may be missing | Dedicated error message (T1.5b); value shown in the raw debug log |
+| A11 | If an agent's events can't be JSON-serialized, the server may send `json.dumps(str(event))`, i.e. a JSON string holding a Python dict repr | Low | `ast.literal_eval` on string events that look like `{...}`; fixture `python_repr.sse` |
 
 ## 3. Message contracts (Python ⇄ extension ⇄ webview)
 
@@ -122,15 +123,15 @@ python/
 
 ### Phase 2: HTTP protocol handler
 
-- [ ] **T2.1** `sse.py::iter_sse_events(lines)`: standard framing (collect `data:` lines, join with `\n`, emit on a blank line or at end of stream; ignore `event:`/`id:`/`:comment`). Bytes are decoded as UTF-8 with `errors="replace"`.
-- [ ] **T2.2** `text_extract.py::extract_text(obj)`: ordered rules for A3; returns `(text, "data"|"raw_event"|"other")`; non-text dicts → `(None, …)`.
-- [ ] **T2.3** `http_protocol.build_payload(prompt)` → `json.dumps({HTTP_PROMPT_KEY: prompt}).encode()`; `accept="application/json, text/event-stream"`.
-- [ ] **T2.4** `http_protocol.handle_response(resp, emitter, cancel)`:
+- [x] **T2.1** `sse.py::iter_sse_events(lines)`: standard framing (collect `data:` lines, join with `\n`, emit on a blank line or at end of stream; ignore `event:`/`id:`/`:comment`). Bytes are decoded as UTF-8 with `errors="replace"`.
+- [x] **T2.2** `text_extract.py::extract_text(obj)`: ordered rules for A3; returns `(text, "data"|"raw_event"|"other")`; non-text dicts → `(None, …)`.
+- [x] **T2.3** `http_protocol.build_payload(prompt)` → `json.dumps({HTTP_PROMPT_KEY: prompt}).encode()`; `accept="application/json, text/event-stream"`.
+- [x] **T2.4** `http_protocol.handle_response(resp, emitter, cancel)`:
   - SSE → for each event: try `json.loads`, else plain text → `extract_text` → `chunk`. Buffer `raw_event` text (A4) and flush it at the end only if nothing else was emitted.
   - JSON → `read()` the whole body, `extract_text`; also handle the Strands `AgentResult` shape (`{"role","content":[{"text"}]}`). If no text, emit the pretty JSON inside a fenced ```json block.
   - Other / unknown content type → decode and emit as-is.
   - `statusCode >= 400` → `error` with the body text.
-- [ ] **T2.5** Tests: one fixture for each A3 shape plus a Strands "both" stream (expect no doubled text) and a JSON body.
+- [x] **T2.5** Tests: one fixture for each A3 shape plus a Strands "both" stream (expect no doubled text) and a JSON body.
 
 ### Phase 3: A2A protocol handler
 
@@ -166,11 +167,14 @@ python/
 - [ ] **T6.1** Protocol toggle: a segmented control `HTTP | A2A` next to the agent picker. Picking an agent sets it from `agent.protocol` when known. A manual override is saved per agent ARN in `vscode.setState`. The toggle shows an "auto" dot when it matches the detected protocol.
 - [ ] **T6.2** Changing the protocol mid-conversation asks "Start new session?", since an A2A context can't be reused by HTTP.
 - [ ] **T6.3** Request IDs: each send creates `requestId`; bubbles are stored in `Map<requestId, el>`; every incoming event is routed by ID (fixes the mixed-up replies).
-- [ ] **T6.4** While streaming, the Send button becomes Stop and posts `cancel`; it goes back on `done`/`error`.
+- [ ] **T6.4** While waiting for or streaming a reply: **Send is disabled** and a **Stop** button is enabled (posts `cancel`). Both go back on `done`/`error`. Enter in the textbox does nothing while busy. *(Refined from user feedback.)*
 - [ ] **T6.5** `status` events render as a small muted line inside the bubble (the latest one replaces the previous).
 - [ ] **T6.6** Footer on `done`: `A2A · 1.8s · task completed` (from `meta`).
 - [ ] **T6.7** `bridge` events: a thin banner ("Reconnecting…" / "Backend stopped — Show Logs").
 - [ ] **T6.8** "MOCK" badge in the header when `settings.mock` is on, so nobody confuses fake replies with real ones.
+- [ ] **T6.9** Redesign Send as an icon button with a **right-pointing arrow** (inline SVG, `currentColor`, with `title`/`aria-label` "Send"); Stop is a square icon in the same spot.
+- [ ] **T6.10** Let the chat live on the **right side** (Secondary Side Bar, next to where Copilot Chat sits), or let the user choose. *Approach to confirm:* contribute the view to the secondary side bar if the API supports it in VS Code 1.146; otherwise add an "AgentCore: Move Chat to Right Side" command and a README tip (users can also drag the view there).
+- [ ] **T6.11** Typing indicator: until the first `chunk` (or `status`) arrives, the agent bubble shows three softly bouncing dots instead of a static `...`. Respects `prefers-reduced-motion` (falls back to a gentle pulse/static dots).
 
 ### Phase 7: Docs & verification
 
@@ -178,6 +182,7 @@ python/
 - [ ] **T7.2** `python/tests/README.md` + `npm run test:py` script (`python -m unittest discover python/tests`).
 - [ ] **T7.3** Manual test checklist (below) run in the Extension Development Host with `agentcore.mock=true`.
 - [ ] **T7.4** CHANGELOG entry.
+- [ ] **T7.5** Add `python/tests/**` and `**/__pycache__/**` to `.vscodeignore` so tests and fixtures are not shipped in the `.vsix`.
 
 ## 5. Manual test checklist (mock mode)
 
