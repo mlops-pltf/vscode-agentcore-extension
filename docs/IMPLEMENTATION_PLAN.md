@@ -43,7 +43,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ```text
 list_profiles   {}
-list_agents     {profile}
+list_agents     {profile, refresh?}       # refresh skips the 5-minute cache
 invoke_agent    {requestId, profile, agentArn, protocol: "HTTP"|"A2A", prompt, sessionId}
 cancel          {requestId}
 reset_session   {sessionId}
@@ -54,7 +54,8 @@ settings (injected) {mock: bool, a2aStreaming: bool, debugRaw: bool}
 
 ```text
 profiles      {data: [str]}
-agents        {data: [{name, arn, description, protocol: "HTTP"|"A2A"|null}]}
+agents        {profile, data: [{name, arn, description, protocol: "HTTP"|"A2A"|null}], note?}
+                                # note e.g. "1 non-chat agent (MCP/AGUI) hidden"; stale replies (other profile) are ignored
 sso_expired   {profile, requestId?}
 chunk         {requestId, text}                 # append to the bubble
 status        {requestId, text}                 # small grey line: "working…", "tool: search"
@@ -189,10 +190,10 @@ python/
 
 ### Phase 4: Agent listing & protocol detection
 
-- [ ] **T4.1** `aws.list_agents(profile)`: `list_agent_runtimes` (paginate), keep `status == "READY"`, then `get_agent_runtime` per agent (thread pool, max 8) to read `protocolConfiguration.serverProtocol`. Only keep `HTTP`/`A2A`; `MCP`/`AGUI` are skipped and counted in a status note. Registry is **not** used (decided Q1).
-- [ ] **T4.1b** Remove the `agentcore.registryId` setting from `package.json` and the `registryId` injection in `extension.js`.
-- [ ] **T4.2** Mock listing: 3 agents (`demo-http-strands` HTTP, `demo-a2a` A2A, `demo-unknown` null).
-- [ ] **T4.3** Cache the agent list per profile for 5 min; the refresh button skips the cache.
+- [x] **T4.1** `aws.list_agents(profile)`: `list_agent_runtimes` (paginate), keep `status == "READY"`, then `get_agent_runtime` per agent (thread pool, max 8) to read `protocolConfiguration.serverProtocol`. Only keep `HTTP`/`A2A`; `MCP`/`AGUI` are skipped and counted in a status note. Registry is **not** used (decided Q1).
+- [x] **T4.1b** Remove the `agentcore.registryId` setting from `package.json` and the `registryId` injection in `extension.js`.
+- [x] **T4.2** Mock listing: 3 agents (`demo-http-strands` HTTP, `demo-a2a` A2A, `demo-unknown` null).
+- [x] **T4.3** Cache the agent list per profile for 5 min; the refresh button skips the cache.
 
 ### Phase 5: Extension host (`extension.js`)
 
