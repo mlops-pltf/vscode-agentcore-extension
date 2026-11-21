@@ -1,0 +1,4 @@
+data: "{'data': 'Hello ', 'agent': '<strands.agent.Agent object at 0x10>'}"
+
+data: "{'data': 'world!'}"
+

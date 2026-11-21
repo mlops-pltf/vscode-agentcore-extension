@@ -1,0 +1,8 @@
+data: {"event": {"messageStart": {"role": "assistant"}}}
+
+data: {"event": {"contentBlockDelta": {"delta": {"text": "Hello "}}}}
+
+data: {"event": {"contentBlockDelta": {"delta": {"text": "world!"}}}}
+
+data: {"event": {"messageStop": {"stopReason": "end_turn"}}}
+
