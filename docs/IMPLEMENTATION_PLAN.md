@@ -255,6 +255,16 @@ Split into three sub-rounds (tested and committed one at a time):
 
 *Done when:* at ~220 px wide every control is still usable; the toolbar, composer card (with agent and protocol chips), new message style and welcome screen look right in light and dark themes; all 6b behaviour still works (e2e checks updated).
 
+##### Design review 2 (after 6d.1, before 6d.2)
+
+The JS side grows a lot in 6d.2, 6d.3 and 6e, so it gets the same treatment the Python side got in review 1. No behaviour change; the committed JS tests (R12) prove it.
+
+- [x] **R12** Commit the JS tests that so far lived in a temp folder: `test/node/webview.e2e.spec.js` (the real panel in jsdom, wired to the real Python bridge, covering all 6b/6c/6d.1 behaviour) and `test/node/host.spec.js` (real `extension.js` with a stubbed `vscode` module and real Python: settings injection, raw-line routing, crash restart and backoff, give-up, deactivate, view hand-over). Uses Node's built-in `node:test`; `jsdom` is a dev-only dependency. Runs with `npm run test:js`. (Named `*.spec.js` so the VS Code test runner, which picks up `test/**/*.test.js`, doesn't load them.) *Done first, so R9-R11 are checked by it.*
+- [x] **R10** Panel markup moves from `extension.js` to `media/webview/index.html`, with `{{placeholders}}` for the nonce, CSP source, asset URLs and starting values.
+- [x] **R11** Split `extension.js` by responsibility: `src/pythonEnv.js` (find or create the venv, re-sync requirements), `src/pythonBridge.js` (spawn, supervise with backoff, queue, route stdout/stderr/raw), `src/chatView.js` (webview provider and webview → extension messages). `extension.js` only wires them together and registers commands.
+- [x] **R9** Split the panel script into files: `media/webview/dom.js` (element helpers, icons), `chat.js` (welcome card, bubbles, footer, typing dots), `main.js` (state, wiring, and a handler table for extension → webview messages instead of an if/else chain). These are **classic scripts sharing one `AgentCore` namespace, not ES modules**: jsdom can't run ES modules, and Node would need `.mjs` files (unconfirmed MIME support in webviews). Classic scripts load unchanged in the webview, in jsdom and in `node:test`. In 6d.2, Markdown comes as `markdown.js`, split into `parse(text)` (pure data, unit-tested without a browser) and `render(tree)` (builds DOM nodes).
+- **Design note for 6d.2:** every editor action from the panel uses **one** message, `{type: "editor", op, ...}`, with `op` ∈ `copy`, `openLink`, `insertAtCursor`, `newFile`, `insertInTerminal`. It's handled by one function in `chatView.js`, which does its own validation (links `http(s)` only; terminal insert never sends Enter).
+
 ##### 6d.2: Rich replies
 
 - [ ] **T6.16** Markdown for agent replies. A small, safe renderer that builds DOM nodes: paragraphs, headings, **bold**/*italic*, `inline code`, fenced code blocks (language label + **Copy**), bulleted/numbered lists, block quotes, rules and links. Links open in the browser through the extension, `http(s)` only. Re-rendered as text streams in (at most once per animation frame). User prompts stay plain text.
