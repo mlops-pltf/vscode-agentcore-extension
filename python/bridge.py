@@ -6,12 +6,11 @@ Agent invocations run in agentcore/invocations.py.
 """
 import json
 import sys
-from typing import Optional
+import threading
 
-from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
-
-from agentcore import invocations, sessions
+from agentcore import agents, invocations, sessions
 from agentcore.backends import backend_for
+from agentcore.errors import AgentCoreError, SsoExpired
 from agentcore.events import claim_stdout, send
 
 
@@ -19,40 +18,29 @@ def list_profiles(cmd: dict):
     send({"type": "profiles", "data": backend_for(cmd.get("settings") or {}).list_profiles()})
 
 
+# Background work started by handlers (other than invocations), joined on exit
+_background = []
+
+
 def list_agents(cmd: dict):
+    # Listing makes one API call per agent, so keep it off the stdin loop
+    thread = threading.Thread(target=_list_agents, args=(cmd,), daemon=True)
+    _background[:] = [t for t in _background if t.is_alive()]
+    _background.append(thread)
+    thread.start()
+
+
+def _list_agents(cmd: dict):
     profile = cmd["profile"]
-    registry_id: Optional[str] = cmd.get("registryId")
     try:
-        # session = boto3.Session(profile_name=profile)
-        # client = session.client("bedrock-agentcore-control")
-
-        # kwargs = {}
-        # if registry_id:
-        #     kwargs["registryId"] = registry_id
-
-        # response = client.list_discoverable_registry_records(**kwargs)
-        # records = response.get("registryRecords", [])
-
-        # agents = []
-        # for rec in records:
-        #     arn = rec.get("recordArn") or rec.get("targetArn") or rec.get("arn", "")
-        #     name = rec.get("name") or rec.get("recordName") or arn.split("/")[-1]
-        #     desc = rec.get("description", "")
-        #     agents.append({"name": name, "arn": arn, "description": desc})
-
-        # send({"type": "agents", "data": agents})
-        send({
-            "type": "agents"
-            , "data": [
-                {"name": "dummy-agent-1", "arn": 'dummy-arn-1', "description": 'dummy-description-1'}
-                , {"name": "dummy-agent-2", "arn": 'dummy-arn-2', "description": 'dummy-description-2'}
-            ]
-        })
-
-    except (UnauthorizedSSOTokenError, TokenRetrievalError):
+        result = agents.list_for(profile, cmd.get("settings") or {}, refresh=bool(cmd.get("refresh")))
+        send({"type": "agents", "profile": profile, **result})
+    except SsoExpired:
         send({"type": "sso_expired", "profile": profile})
-    except Exception as e:
+    except AgentCoreError as e:
         send({"type": "error", "message": str(e)})
+    except Exception as e:
+        send({"type": "error", "message": f"Could not list agents: {type(e).__name__}: {e}"})
 
 
 def invoke_agent(cmd: dict):
@@ -94,6 +82,8 @@ def main():
 
     # stdin closed: let in-flight replies finish before exiting
     invocations.wait_all()
+    for thread in _background:
+        thread.join()
 
 
 if __name__ == "__main__":

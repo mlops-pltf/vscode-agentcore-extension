@@ -5,10 +5,60 @@ import boto3
 from botocore.exceptions import NoRegionError, UnauthorizedSSOTokenError
 from botocore.stub import Stubber
 
-from agentcore import aws
+from agentcore import agents, aws
 from agentcore.errors import AgentCoreError, SsoExpired
 
 ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/"
+
+
+def agent(name, protocol):
+    return {"name": name, "arn": ARN + name, "description": "", "protocol": protocol}
+
+
+class ChatAgentsTest(unittest.TestCase):
+    def test_hides_non_chat_protocols_and_sorts(self):
+        result = agents._chat_agents([agent("zeta", "A2A"), agent("tools", "MCP"),
+                                      agent("Alpha", "HTTP"), agent("ui", "AGUI"), agent("mystery", None)])
+        self.assertEqual([a["name"] for a in result["data"]], ["Alpha", "mystery", "zeta"])
+        self.assertEqual(result["note"], "2 non-chat agents (MCP/AGUI) hidden")
+
+    def test_note_singular_and_none(self):
+        self.assertEqual(agents._chat_agents([agent("t", "MCP")])["note"], "1 non-chat agent (MCP/AGUI) hidden")
+        self.assertIsNone(agents._chat_agents([agent("a", "HTTP")])["note"])
+
+
+class CacheTest(unittest.TestCase):
+    def setUp(self):
+        agents._cache.clear()
+        self.backend = mock.Mock()
+        self.backend.list_agents.return_value = [agent("a", "HTTP")]
+        patcher = mock.patch.object(agents, "backend_for", return_value=self.backend)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(agents._cache.clear)
+
+    def test_second_call_uses_cache(self):
+        agents.list_for("dev", {})
+        agents.list_for("dev", {})
+        self.assertEqual(self.backend.list_agents.call_count, 1)
+
+    def test_refresh_bypasses_cache(self):
+        agents.list_for("dev", {})
+        agents.list_for("dev", {}, refresh=True)
+        self.assertEqual(self.backend.list_agents.call_count, 2)
+
+    def test_cache_is_per_profile_and_mock_mode(self):
+        agents.list_for("dev", {})
+        agents.list_for("prod", {})
+        agents.list_for("dev", {"mock": False})
+        self.assertEqual(self.backend.list_agents.call_count, 3)
+
+    def test_cache_expires(self):
+        with mock.patch.object(agents.time, "monotonic", return_value=1000.0):
+            agents.list_for("dev", {})
+        with mock.patch.object(agents.time, "monotonic", return_value=1000.0 + agents.CACHE_SECONDS + 1):
+            agents.list_for("dev", {})
+        self.assertEqual(self.backend.list_agents.call_count, 2)
 
 
 class SequentialExecutor:

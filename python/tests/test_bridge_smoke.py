@@ -85,6 +85,16 @@ class BridgeSmokeTest(unittest.TestCase):
         text = "".join(e["text"] for e in first if e["type"] == "chunk")
         self.assertEqual(text, "You said: 'hi'. This is a mock reply from demo, streamed word by word.")
 
+    def test_list_agents_tags_profile_and_hides_non_chat_agents(self):
+        events = self.run_bridge([{"action": "list_agents", "profile": "dev"},
+                                  {"action": "list_agents", "profile": "dev", "refresh": True}])
+        self.assertEqual([e["type"] for e in events], ["agents", "agents"])
+        first = events[0]
+        self.assertEqual(first["profile"], "dev")
+        self.assertEqual([(a["name"], a["protocol"]) for a in first["data"]],
+                         [("demo-a2a", "A2A"), ("demo-http-strands", "HTTP"), ("demo-unknown", None)])
+        self.assertEqual(first["note"], "1 non-chat agent (MCP/AGUI) hidden")
+
     def test_reset_session_is_accepted(self):
         events = self.run_bridge([{"action": "reset_session", "sessionId": "s" * 36}])
         self.assertEqual(events, [])
