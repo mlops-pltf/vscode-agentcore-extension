@@ -12,7 +12,7 @@ from typing import Dict, Optional, Tuple
 
 from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
-from agentcore import aws, mock_runtime
+from agentcore import aws, http_protocol, mock_runtime
 from agentcore.cancel import CancelToken
 from agentcore.events import Emitter, send
 
@@ -62,6 +62,9 @@ def list_agents(cmd: dict):
         send({"type": "error", "message": str(e)})
 
 
+# Protocol modules by name; each has build_payload(), ACCEPT and handle_response()
+PROTOCOLS = {"HTTP": http_protocol}
+
 # In-flight invocations by requestId
 _active: Dict[str, Tuple[threading.Thread, CancelToken]] = {}
 _active_lock = threading.Lock()
@@ -94,27 +97,20 @@ def _run_invoke(cmd: dict, request_id: str, token: CancelToken):
         session_id = cmd.get("sessionId") or str(uuid.uuid4())
         user_id = backend.get_runtime_user_id(profile)
 
-        # Interim (Phase 1): HTTP-style payload and line passthrough.
-        # Phases 2 and 3 replace this with the HTTP and A2A protocol handlers.
-        payload = json.dumps({"prompt": cmd["prompt"]}).encode("utf-8")
-        response = backend.invoke(profile, cmd["agentArn"], session_id, payload,
-                                  "application/json, text/event-stream", user_id)
-        body = response["response"]
-        token.attach(body)
-        for line in body.iter_lines():
-            if token.cancelled:
-                break
-            if not line:
-                continue
-            text = line.decode("utf-8", errors="replace")
-            emitter.raw(text)
-            if text.startswith("data: "):
-                text = text[6:]
-            emitter.chunk(text + "\n")
+        protocol = (cmd.get("protocol") or "HTTP").upper()
+        handler = PROTOCOLS.get(protocol)
+        if handler is None:
+            emitter.error(f"Protocol {protocol} is not supported yet")
+            return
 
+        payload = handler.build_payload(cmd["prompt"])
+        response = backend.invoke(profile, cmd["agentArn"], session_id, payload,
+                                  handler.ACCEPT, user_id)
+        meta = handler.handle_response(response, emitter, token)
         emitter.done(state="cancelled" if token.cancelled else "completed",
-                     contentType=response.get("contentType"),
-                     ms=int((time.monotonic() - started) * 1000))
+                     protocol=protocol,
+                     ms=int((time.monotonic() - started) * 1000),
+                     **meta)
     except aws.SsoExpired as e:
         emitter.sso_expired(e.profile)
     except aws.AgentCoreError as e:
