@@ -1,23 +1,29 @@
-import sys
+"""stdin/stdout bridge between the VS Code extension and AWS.
+
+Reads one JSON command per line from stdin, dispatches it by "action",
+and replies with JSON events on stdout (see agentcore/events.py).
+"""
 import json
-import uuid
-import boto3
-from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
+import sys
 from typing import Optional
 
+import boto3
+from botocore.exceptions import UnauthorizedSSOTokenError, TokenRetrievalError
 
-def send(msg: dict):
-    print(json.dumps(msg), flush=True)
+from agentcore.events import Emitter, send
 
-def list_profiles():
-    profiles = boto3.Session().available_profiles
-    send({"type": "profiles", "data": profiles})
 
-def list_agents(profile: str, registry_id: Optional[str] = None):
+def list_profiles(cmd: dict):
+    send({"type": "profiles", "data": boto3.Session().available_profiles})
+
+
+def list_agents(cmd: dict):
+    profile = cmd["profile"]
+    registry_id: Optional[str] = cmd.get("registryId")
     try:
         # session = boto3.Session(profile_name=profile)
         # client = session.client("bedrock-agentcore-control")
-        
+
         # kwargs = {}
         # if registry_id:
         #     kwargs["registryId"] = registry_id
@@ -46,38 +52,21 @@ def list_agents(profile: str, registry_id: Optional[str] = None):
     except Exception as e:
         send({"type": "error", "message": str(e)})
 
-def invoke_agent(profile: str, agent_arn: str, prompt: str, session_id: str):
-    try:
-        # session = boto3.Session(profile_name=profile)
-        # client = session.client("bedrock-agentcore")
 
-        # response = client.invoke_agent_runtime(
-        #     agentRuntimeArn=agent_arn,
-        #     runtimeSessionId=session_id or str(uuid.uuid4()),
-        #     payload=json.dumps({"prompt": prompt}).encode("utf-8"),
-        # )
+def invoke_agent(cmd: dict):
+    emitter = Emitter(cmd.get("requestId"))
+    emitter.chunk('Fisrt chunk...\n')
+    emitter.chunk('Second chunk...\n')
+    emitter.chunk('Last chunk...\n')
+    emitter.done()
 
-        # body = response.get("response")
-        # if hasattr(body, "iter_lines"):
-        #     for line in body.iter_lines():
-        #         if line:
-        #             text = line.decode("utf-8")
-        #             if text.startswith("data: "):
-        #                 text = text[6:]
-        #             send({"type": "chunk", "text": text})
-        # elif hasattr(body, "read"):
-        #     send({"type": "chunk", "text": body.read().decode("utf-8")})
-        # else:
-        #     send({"type": "chunk", "text": str(body)})
-        send({"type": "chunk", "text": 'Fisrt chunk...\n'})
-        send({"type": "chunk", "text": 'Second chunk...\n'})
-        send({"type": "chunk", "text": 'Last chunk...\n'})
-        send({"type": "done"})
 
-    except (UnauthorizedSSOTokenError, TokenRetrievalError):
-        send({"type": "sso_expired", "profile": profile})
-    except Exception as e:
-        send({"type": "error", "message": str(e)})
+HANDLERS = {
+    "list_profiles": list_profiles,
+    "list_agents": list_agents,
+    "invoke_agent": invoke_agent,
+}
+
 
 def main():
     for line in sys.stdin:
@@ -86,20 +75,14 @@ def main():
             continue
         try:
             cmd = json.loads(line)
-            action = cmd.get("action")
-            if action == "list_profiles":
-                list_profiles()
-            elif action == "list_agents":
-                list_agents(cmd["profile"], cmd.get("registryId"))
-            elif action == "invoke_agent":
-                invoke_agent(
-                    cmd["profile"],
-                    cmd["agentArn"],
-                    cmd["prompt"],
-                    cmd.get("sessionId", "")
-                )
+            handler = HANDLERS.get(cmd.get("action"))
+            if handler is None:
+                send({"type": "error", "message": f"Bridge error: unknown action {cmd.get('action')!r}"})
+                continue
+            handler(cmd)
         except Exception as e:
             send({"type": "error", "message": f"Bridge error: {e}"})
+
 
 if __name__ == "__main__":
     main()
