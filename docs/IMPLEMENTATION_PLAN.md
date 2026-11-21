@@ -80,6 +80,9 @@ Each task is one small commit that can be reviewed alone. "Done when" is the che
 - [x] **T0.5** Check the profile name against `^[\w.@+-]+$` before `aws sso login`; show an error message otherwise.
   *Done when:* a profile containing `; rm` is refused.
 
+- [x] **T0.6** *(found while testing Phase 1)* Activity Bar icon shows as a gray square. Cause: `media/robot.svg` has `xmlns="http://w3.org"` instead of `http://www.w3.org/2000/svg`. VS Code uses the icon as a CSS mask, and an invalid SVG makes the mask fail, so the whole box gets filled. Fix the namespace.
+  *Done when:* the Activity Bar shows the robot outline, and it follows the theme colour (dim when inactive, bright when selected).
+
 ### Phase 1: Python restructure (same behaviour, new structure)
 
 Target layout:
