@@ -206,7 +206,15 @@ python/
 
 ### Phase 6: Webview
 
+Done in three rounds, each on branch `phase-6-webview`, tested by the user and committed before the next round starts.
+
+#### Round 6a: Foundation (no visible change)
+
 - [ ] **T6.0** *(from the design review)* Move the webview out of the template string in `extension.js` into `media/webview/{main.js,main.css}`, loaded via `asWebviewUri`. CSP: `script-src ${cspSource} 'nonce-…'`, `style-src ${cspSource}`. No more `\${}` escaping, and the files can be linted and edited normally. Do this first in Phase 6, before the UI grows.
+
+*Done when:* the panel looks and behaves exactly as before (Phase 5 tests 1-2 pass again), `extension.js` contains no webview HTML/CSS/JS, and DevTools shows no CSP violations.
+
+#### Round 6b: Chat core
 
 - [ ] **T6.1** Protocol toggle: a segmented control `HTTP | A2A` next to the agent picker. Picking an agent sets it from `agent.protocol` when known. A manual override is saved per agent ARN in `vscode.setState`. The toggle shows an "auto" dot when it matches the detected protocol.
 - [ ] **T6.2** Changing the protocol mid-conversation asks "Start new session?", since an A2A context can't be reused by HTTP.
@@ -216,9 +224,16 @@ python/
 - [ ] **T6.6** Footer on `done`: `A2A · 1.8s · task completed` (from `meta`).
 - [ ] **T6.7** `bridge` events: a thin banner ("Reconnecting…" / "Backend stopped — Show Logs").
 - [ ] **T6.8** "MOCK" badge in the header when `settings.mock` is on, so nobody confuses fake replies with real ones.
+
+*Done when:* an A2A agent can be chatted with from the panel (toggle set automatically), two prompts in a row never mix, Stop cancels a slow reply, and the MOCK badge and backend banner behave as described.
+
+#### Round 6c: Polish
+
 - [ ] **T6.9** Redesign Send as an icon button with a **right-pointing arrow** (inline SVG, `currentColor`, with `title`/`aria-label` "Send"); Stop is a square icon in the same spot.
 - [ ] **T6.10** Let the chat live on the **right side** (Secondary Side Bar, next to where Copilot Chat sits), or let the user choose. *Approach to confirm:* contribute the view to the secondary side bar if the API supports it in VS Code 1.146; otherwise add an "AgentCore: Move Chat to Right Side" command and a README tip (users can also drag the view there).
 - [ ] **T6.11** Typing indicator: until the first `chunk` (or `status`) arrives, the agent bubble shows three softly bouncing dots instead of a static `...`. Respects `prefers-reduced-motion` (falls back to a gentle pulse/static dots).
+
+*Done when:* the arrow/stop button, typing dots and right-side placement work in both light and dark themes.
 
 ### Phase 7: Docs & verification
 
