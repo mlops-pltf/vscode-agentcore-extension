@@ -305,75 +305,19 @@ class AgentCoreViewProvider {
   }
 
   _getHtml(webview) {
-    const nonce = crypto.randomBytes(16).toString('base64');
-    const asset = (file) => webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview', file));
-    // Starting values for main.js; "<" is escaped so a value can't close the <script> tag
-    const init = JSON.stringify({ sessionId: crypto.randomUUID(), settings: this._settings() }).replace(/</g, '\\u003c');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-<link rel="stylesheet" href="${asset('main.css')}">
-</head>
-<body>
-  <header class="toolbar">
-    <span class="select-wrap"><select id="profileSelect" title="AWS profile" aria-label="AWS profile"><option value="">Loading profiles...</option></select></span>
-    <span id="mockBadge" class="badge" title="Replies come from the built-in mock (setting agentcore.mock)" hidden>MOCK</span>
-    <button id="refreshBtn" class="icon-btn" title="Refresh agents" aria-label="Refresh agents">
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <button id="newChatBtn" class="icon-btn" title="New chat" aria-label="New chat">
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-    </button>
-  </header>
-
-  <div id="agentsNote" class="note" hidden></div>
-  <div id="ssoBanner">
-    <span>SSO token expired for this profile.</span>
-    <button id="ssoLoginBtn">Run aws sso login</button>
-  </div>
-  <div id="bridgeBanner" class="banner" hidden>
-    <span id="bridgeText"></span>
-    <button id="bridgeRestartBtn">Restart</button>
-    <button id="bridgeLogsBtn" class="secondary">Show Logs</button>
-  </div>
-  <div id="switchNotice" class="notice" hidden>
-    <span id="switchText"></span>
-    <button id="switchYesBtn">Switch</button>
-    <button id="switchNoBtn" class="secondary">Cancel</button>
-  </div>
-
-  <main id="chat"></main>
-
-  <div class="composer">
-    <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
-    <div class="composer-footer">
-      <label class="agent-chip" title="Agent">
-        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7.5" width="15" height="10" rx="3"/><path d="M12 4.5v3"/><path d="M9.5 12.5h.01M14.5 12.5h.01" stroke-width="2.6"/></svg>
-        <span class="select-wrap"><select id="agentSelect" aria-label="Agent"><option value="">Select profile first...</option></select></span>
-      </label>
-      <div id="protocolToggle" class="segmented" role="group" aria-label="Agent protocol">
-        <button data-protocol="HTTP" aria-pressed="true">HTTP</button>
-        <button data-protocol="A2A" aria-pressed="false">A2A</button>
-      </div>
-      <span class="grow"></span>
-      <span class="hint">⏎ send · ⇧⏎ new line</span>
-      <!-- One action spot: arrow to send, square to stop (main.js shows one at a time) -->
-      <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button id="stopBtn" class="icon-btn secondary" title="Stop" aria-label="Stop" disabled hidden>
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
-      </button>
-    </div>
-  </div>
-
-  <script nonce="${nonce}" id="init" type="application/json">${init}</script>
-  <script nonce="${nonce}" src="${asset('main.js')}"></script>
-</body>
-</html>`;
+    const webviewDir = vscode.Uri.joinPath(this._extensionUri, 'media', 'webview');
+    const asset = (file) => String(webview.asWebviewUri(vscode.Uri.joinPath(webviewDir, file)));
+    const values = {
+      cspSource: webview.cspSource,
+      nonce: crypto.randomBytes(16).toString('base64'),
+      mainCss: asset('main.css'),
+      mainJs: asset('main.js'),
+      // Starting values for main.js; "<" is escaped so a value can't close the <script> tag
+      init: JSON.stringify({ sessionId: crypto.randomUUID(), settings: this._settings() }).replace(/</g, '\\u003c')
+    };
+    const template = fs.readFileSync(path.join(webviewDir.fsPath, 'index.html'), 'utf8');
+    // A replacer function, so "$" in a value is never treated as a replacement pattern
+    return template.replace(/\{\{(\w+)\}\}/g, (match, name) => (name in values ? values[name] : match));
   }
 }
 
