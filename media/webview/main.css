@@ -47,3 +47,20 @@ button:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
 .msg .status { font-size: 11px; font-style: italic; opacity: 0.75; margin-bottom: 4px; }
 .msg .error-text { color: var(--vscode-errorForeground); margin-top: 4px; }
 .msg .footer { font-size: 10px; opacity: 0.6; margin-top: 6px; }
+
+/* Send / Stop icon buttons share one spot at the end of the input box */
+.input-box { align-items: flex-end; }
+.icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; flex-shrink: 0; }
+
+/* Typing indicator */
+.typing { display: inline-flex; gap: 4px; align-items: center; height: 1.4em; }
+.typing span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.4; animation: typing-bounce 1.2s infinite ease-in-out; }
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing span { animation: none; opacity: 0.6; }
+}

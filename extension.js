@@ -347,8 +347,13 @@ class AgentCoreViewProvider {
 
   <div class="input-box">
     <textarea id="promptInput" placeholder="Message selected agent... (Enter to send)"></textarea>
-    <button id="sendBtn">Send</button>
-    <button id="stopBtn" class="secondary" disabled>Stop</button>
+    <!-- One action spot: arrow to send, square to stop (main.js shows one at a time) -->
+    <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button id="stopBtn" class="icon-btn secondary" title="Stop" aria-label="Stop" disabled hidden>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+    </button>
   </div>
 
   <script nonce="${nonce}" id="init" type="application/json">${init}</script>

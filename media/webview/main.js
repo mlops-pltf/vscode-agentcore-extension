@@ -144,7 +144,9 @@ function startNewSession() {
 function updateBusy() {
   const busy = requests.size > 0;
   sendBtn.disabled = busy;
+  sendBtn.hidden = busy;
   stopBtn.disabled = !busy;
+  stopBtn.hidden = !busy;
 }
 
 function sendMessage() {
@@ -196,8 +198,18 @@ function createAgentBubble() {
   }
   parts.status.hidden = true;
   parts.footer.hidden = true;
-  parts.text.textContent = '...';
+  parts.text.replaceChildren(typingDots());
   return parts;
+}
+
+// Three bouncing dots until the first words arrive (main.css animates them)
+function typingDots() {
+  const dots = document.createElement('span');
+  dots.className = 'typing';
+  dots.setAttribute('role', 'status');
+  dots.setAttribute('aria-label', 'Agent is replying');
+  for (let i = 0; i < 3; i++) dots.appendChild(document.createElement('span'));
+  return dots;
 }
 
 function onChunk(r, text) {
