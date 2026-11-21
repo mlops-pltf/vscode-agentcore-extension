@@ -58,17 +58,31 @@ class BridgeSmokeTest(unittest.TestCase):
 
     def test_a2a_conversation_keeps_context_until_reset(self):
         sid = "a" * 36
+        proc = subprocess.Popen([sys.executable, "-W", "ignore", BRIDGE],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.addCleanup(proc.kill)
 
-        def a2a(request_id, prompt):
-            return dict(invoke(request_id, prompt), protocol="A2A", sessionId=sid)
+        def turn(request_id, prompt):
+            """Send one A2A turn and wait for its reply, like the panel does."""
+            proc.stdin.write(json.dumps(dict(invoke(request_id, prompt), protocol="A2A", sessionId=sid)) + "\n")
+            proc.stdin.flush()
+            events = []
+            for line in proc.stdout:
+                event = json.loads(line)
+                if event.get("requestId") == request_id:
+                    events.append(event)
+                    if event["type"] in ("done", "error"):
+                        return events
 
-        events = self.run_bridge([a2a("T1", "hi")], [a2a("T2", "again")],
-                                 [{"action": "reset_session", "sessionId": sid}, a2a("T3", "fresh")], pause=0.5)
-        done = {rid: self.for_request(events, rid)[-1] for rid in ("T1", "T2", "T3")}
+        first, second = turn("T1", "hi"), turn("T2", "again")
+        proc.stdin.write(json.dumps({"action": "reset_session", "sessionId": sid}) + "\n")
+        third = turn("T3", "fresh")
+
+        done = {"T1": first[-1], "T2": second[-1], "T3": third[-1]}
         self.assertTrue(all(d["type"] == "done" and d["meta"]["protocol"] == "A2A" for d in done.values()), done)
         self.assertEqual(done["T1"]["meta"]["contextId"], done["T2"]["meta"]["contextId"])
         self.assertNotEqual(done["T2"]["meta"]["contextId"], done["T3"]["meta"]["contextId"])
-        text = "".join(e["text"] for e in self.for_request(events, "T1") if e["type"] == "chunk")
+        text = "".join(e["text"] for e in first if e["type"] == "chunk")
         self.assertEqual(text, "You said: 'hi'. This is a mock reply from demo, streamed word by word.")
 
     def test_reset_session_is_accepted(self):
