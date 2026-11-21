@@ -13,7 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Searchable agent picker**: filter agents by name or description, with keyboard support, for accounts with many agents.
 - **Agent Cards** for A2A agents: version, skills and example prompts on the welcome screen.
 - **Setting `agentcore.a2aStreaming`**: `auto` (default) streams when the Agent Card says the agent can; `on` / `off` force it.
-- **Markdown replies**, rendered while they stream in: headings, emphasis, lists, quotes, links (opened in the browser after VS Code asks) and code blocks.
+- **Markdown replies**, rendered while they stream in: headings, emphasis, lists, tables, quotes, links (opened in the browser after VS Code asks) and code blocks.
 - **Code block actions**: Copy, Insert at Cursor, Open in New File, and Insert into Terminal for shell blocks (never runs the command).
 - **Reply actions**: Copy reply (as Markdown), Copy trace ID, Open in CloudWatch, and Retry on failed replies.
 - **Trace IDs**: every request is sent with an X-Ray trace id, shown on its reply.
@@ -21,6 +21,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Identity at a glance**: the profile picker's tooltip shows your user, account and region.
 - **Runtime user**: your SSO identity is sent as `runtimeUserId`.
 - **Composer**: Stop (or Esc), "Thinking · Ns" while waiting, ↑ recalls the last prompt, smart scrolling with "Jump to latest".
+- **Agent errors mid-stream** (`{"error": ..., "error_type": ...}`, as sent by `BedrockAgentCoreApp`) end the reply with an error and Retry instead of showing as text.
+- **Sample agent** (`samples/http-agent`) built with `BedrockAgentCoreApp` and Strands, and an agent reply format guide (`docs/AGENT_REPLY_FORMAT.md`).
 - **Mock mode** (`agentcore.mock`) with demo agents and scenarios (`markdown`, `slow`, `json`, `tool`, `input`, `fail`, `rpcerror`, `error`).
 - **Setting `agentcore.region`** (default `eu-central-1`; empty uses the profile's region) and **`agentcore.debugRawResponses`** for capturing raw replies.
 - **Commands**: AgentCore: Open Chat, Show Logs, Restart Backend; an **AgentCore Chat** Output channel.

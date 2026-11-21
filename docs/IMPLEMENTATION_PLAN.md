@@ -331,6 +331,18 @@ The native `<select>` can't be searched, so the agent chip opens our own picker.
 
 *Done 2026-11-21 (mock); a long real list still to try at the office.* *Done when:* with the mock, searching filters and picks agents by mouse and keyboard; with a long real list (office), finding an agent by part of its name or description is quick.
 
+### Phase 9: Sample agent, reply format guide, tables (added 2026-11-21)
+
+User requests: "add the doc" (what agents should return), "tables like |Day|Focus| are not rendering", and "add a sample agent, make sure you are using BedrockAgentCoreApp". Checked against the real SDKs: `bedrock-agentcore` 1.27.0, `strands-agents` 1.65.0, starter toolkit 0.3.14 (its `launch` is now `deploy`).
+
+- [x] **T9.1** `docs/AGENT_REPLY_FORMAT.md`: request, recommended SSE events, one-piece answers, errors, Markdown, A2A results, Agent Card, how to check a real agent; linked from the README.
+- [x] **T9.2** GitHub-style **tables** in `markdown.js`: header + delimiter row, alignment (`:---:`, `---:`), inline Markdown in cells, `\|` in cells, rows padded to the header; wide tables scroll sideways. A header without its delimiter row (still streaming) stays a paragraph. The mock's `markdown` sample gains a table.
+- [x] **T9.3** **Mid-stream errors**: `BedrockAgentCoreApp` turns an exception in the entrypoint into an event `{"error", "error_type", "message"}`. Before, the chat showed "An error occurred during streaming" as reply text and "completed"; now `text_extract` returns kind `error` and the HTTP protocol ends the reply with "Agent error: <type>: <message>" (text so far kept, Retry offered).
+- [x] **T9.4** `samples/http-agent/`: `agent.py` with `BedrockAgentCoreApp` + Strands (async generator entrypoint forwarding only `data` and `current_tool_use`; one agent per `context.session_id`; tools `current_time`, `word_count`; Markdown system prompt; `MODEL_ID`; `ECHO_MODE=1` for no model), `requirements.txt`, README (run locally with curl, deploy with the starter toolkit, use from the extension). Its own venv (Python 3.10+; the extension's dev venv is 3.9).
+- [x] **T9.5** `samples/http-agent/test_agent.py` (`npm run test:sample`): the real `BedrockAgentCoreApp` through Starlette's test client with a fake Strands agent; the streamed bytes are read by the extension's own `HttpProtocol`. Covers text and tool status, one agent per session, missing prompt, an exception reaching the extension as an error, echo mode, `/ping`. `samples/**` left out of the `.vsix`.
+
+*Done 2026-11-21 (tests and mock); deploying the sample is for the office.* *Done when:* tables render in the chat; the sample's stream is read correctly by the extension (tests); at the office, the deployed sample answers in the chat with tool status, Markdown and a table.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

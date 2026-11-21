@@ -6,7 +6,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 
 - **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents). With many agents, **search** the list by name or description.
 - **HTTP and A2A.** A toggle under the message box switches protocol per agent; it starts on the detected one (marked with a dot) and remembers your choice.
-- **Streaming replies with Markdown**: headings, lists, quotes, links and code blocks with a language label.
+- **Streaming replies with Markdown**: headings, lists, tables, quotes, links and code blocks with a language label.
 - **Code blocks you can use**: Copy, Insert at Cursor, Open in New File, and for shell commands Insert into Terminal (it never runs the command for you).
 - **A2A Agent Cards**: an A2A agent's welcome screen shows its version, skills and example prompts; streaming is switched on automatically when the agent supports it.
 - **Conversations that continue**: each chat is one AgentCore session; A2A agents keep their context and can ask you follow-up questions. **New chat** ends the session on AgentCore, freeing its resources.
@@ -96,7 +96,7 @@ Example policy:
 
 ## How replies are read
 
-AgentCore passes agent responses through as the agent wrote them, so the extension accepts the common shapes:
+AgentCore passes agent responses through as the agent wrote them, so the extension accepts the common shapes. **Building an agent?** See [docs/AGENT_REPLY_FORMAT.md](docs/AGENT_REPLY_FORMAT.md) for the exact format, and [samples/http-agent](samples/http-agent/) for a ready-made agent built with `BedrockAgentCoreApp`. In short:
 
 - **HTTP agents** get `{"prompt": "..."}`. Replies can be Server-Sent Events (e.g. Strands streaming events) or a single JSON or text body.
 - **A2A agents** get a JSON-RPC 2.0 `message/send` or `message/stream` call. Replies can be a Message, a Task (with artifacts), and status or artifact updates. The conversation's `contextId` is sent back on every turn; if the agent asks for input, your next message answers that task.
@@ -141,6 +141,7 @@ Press **F5** to start an Extension Development Host. The extension uses the repo
 |---|---|
 | `npm run test:py` | Python tests (protocol parsing, AWS calls with botocore's Stubber, the bridge end to end) |
 | `npm run test:js` | JavaScript tests (Markdown parser, the real panel in jsdom wired to the real Python backend, the extension host) |
+| `npm run test:sample` | The sample agent through the real `BedrockAgentCoreApp`, read by the extension's parser (needs the sample's own venv: see [samples/http-agent](samples/http-agent/)) |
 | `npm run lint` | ESLint |
 
 See [python/tests/README.md](python/tests/README.md) for details, and `python/tools/chat_cli.py` to chat with the backend from a terminal.
@@ -159,4 +160,4 @@ See [python/tests/README.md](python/tests/README.md) for details, and `python/to
 npx @vscode/vsce package
 ```
 
-Tests, fixtures, tools and the docs folder are left out of the `.vsix` (see `.vscodeignore`).
+Tests, fixtures, tools, samples and the docs folder are left out of the `.vsix` (see `.vscodeignore`).
