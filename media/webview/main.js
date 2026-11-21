@@ -11,6 +11,13 @@ let currentSettings = init.settings;
 const savedState = vscode.getState() || {};
 const protocolOverrides = savedState.protocolOverrides || {};
 
+// Shown on the welcome card; round 6e replaces them with the agent's own skills
+const SUGGESTIONS = [
+  'What can you help me with?',
+  'Show me an example of a task you can do',
+  'What do you need from me to get started?'
+];
+
 let agents = new Map();      // arn -> agent from the last agents event
 let currentAgentArn = '';
 let protocol = 'HTTP';
@@ -50,6 +57,49 @@ function scrollToBottom() {
   chat.scrollTop = chat.scrollHeight;
 }
 
+// The extension's robot icon, built as SVG nodes (no innerHTML)
+function robotIcon(size) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', size);
+  svg.setAttribute('height', size);
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.7');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const parts = [
+    ['rect', { x: '4.5', y: '7.5', width: '15', height: '10', rx: '3' }],
+    ['path', { d: 'M12 4.5v3' }],
+    ['path', { d: 'M9.5 12.5h.01M14.5 12.5h.01', 'stroke-width': '2.6' }]
+  ];
+  for (const [tag, attrs] of parts) {
+    const el = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.appendChild(el);
+  }
+  return svg;
+}
+
+function avatar(size) {
+  const span = document.createElement('span');
+  span.className = 'avatar';
+  span.appendChild(robotIcon(size));
+  return span;
+}
+
+// The textarea grows with its content up to the CSS max-height, then scrolls
+function autoGrow() {
+  promptInput.style.height = 'auto';
+  promptInput.style.height = promptInput.scrollHeight + 'px';
+}
+
+function currentAgent() {
+  return agents.get(currentAgentArn);
+}
+
 // ---------- profiles and agents ----------
 
 // refresh = true skips the agent-list cache in Python
@@ -85,6 +135,8 @@ function onAgentChanged() {
   const agent = agents.get(arn);
   protocol = protocolOverrides[arn] || (agent && agent.protocol) || 'HTTP';
   renderProtocol();
+  promptInput.placeholder = agent ? `Ask ${agent.name}...` : 'Select an agent to start...';
+  if (turns === 0) renderEmptyState();
 }
 
 // ---------- protocol toggle ----------
@@ -128,6 +180,7 @@ function applyProtocol(next) {
   }
   vscode.setState({ ...savedState, protocolOverrides });
   renderProtocol();
+  if (turns === 0) renderEmptyState();
 }
 
 // ---------- sessions and sending ----------
@@ -139,6 +192,51 @@ function startNewSession() {
   turns = 0;
   chat.replaceChildren();
   $('switchNotice').hidden = true;
+  renderEmptyState();
+}
+
+// Welcome card shown while the chat is empty
+function renderEmptyState() {
+  const agent = currentAgent();
+  const card = document.createElement('div');
+  card.className = 'empty';
+  card.appendChild(avatar(26));
+
+  const title = document.createElement('h2');
+  title.textContent = agent ? agent.name : 'AgentCore Chat';
+  card.appendChild(title);
+
+  if (agent) {
+    const proto = document.createElement('div');
+    proto.className = 'protocol';
+    proto.textContent = `${protocol} agent`;
+    card.appendChild(proto);
+  }
+
+  const text = document.createElement('p');
+  text.textContent = agent
+    ? (agent.description || 'Ask a question to start the conversation.')
+    : 'Choose an AWS profile and an agent below to start chatting.';
+  card.appendChild(text);
+
+  if (agent) {
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    for (const suggestion of SUGGESTIONS) {
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = suggestion;
+      // Fill the composer rather than sending, so the user can edit first
+      chip.addEventListener('click', () => {
+        promptInput.value = suggestion;
+        autoGrow();
+        promptInput.focus();
+      });
+      chips.appendChild(chip);
+    }
+    card.appendChild(chips);
+  }
+  chat.replaceChildren(card);
 }
 
 function updateBusy() {
@@ -156,6 +254,7 @@ function sendMessage() {
 
   appendMsg(prompt, 'user');
   promptInput.value = '';
+  autoGrow();
   const requestId = newId();
   requests.set(requestId, createAgentBubble());
   turns += 1;
@@ -179,6 +278,7 @@ function stopAll() {
 }
 
 function appendMsg(text, cls) {
+  chat.querySelector('.empty')?.remove();
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
   div.textContent = text;
@@ -190,6 +290,14 @@ function appendMsg(text, cls) {
 // An agent reply: optional status line, the text, and a footer when done
 function createAgentBubble() {
   const bubble = appendMsg('', 'agent');
+  const head = document.createElement('div');
+  head.className = 'agent-head';
+  head.appendChild(avatar(14));
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = currentAgent() ? currentAgent().name : 'Agent';
+  head.appendChild(name);
+  bubble.appendChild(head);
   const parts = { bubble, received: false };
   for (const name of ['status', 'text', 'footer']) {
     parts[name] = document.createElement('div');
@@ -300,6 +408,7 @@ $('switchNoBtn').addEventListener('click', () => { $('switchNotice').hidden = tr
 $('bridgeRestartBtn').addEventListener('click', () => vscode.postMessage({ type: 'restartBackend' }));
 $('bridgeLogsBtn').addEventListener('click', () => vscode.postMessage({ type: 'showLogs' }));
 sendBtn.addEventListener('click', sendMessage);
+promptInput.addEventListener('input', autoGrow);
 stopBtn.addEventListener('click', stopAll);
 promptInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -348,4 +457,5 @@ window.addEventListener('message', (event) => {
 
 showSettings();
 updateBusy();
+renderEmptyState();
 vscode.postMessage({ action: 'list_profiles' });
