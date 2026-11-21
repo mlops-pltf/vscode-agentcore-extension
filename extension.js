@@ -20,6 +20,8 @@ class AgentCoreViewProvider {
     this._extensionUri = context.extensionUri;
     this._view = undefined;
     this._pyProcess = undefined;
+    // Messages sent before Python is running (e.g. during first-time venv setup)
+    this._pending = [];
   }
 
   async resolveWebviewView(webviewView) {
@@ -27,8 +29,7 @@ class AgentCoreViewProvider {
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = this._getHtml(webviewView.webview);
 
-    await this._startPythonBridge();
-
+    // Listen before starting Python so the webview's first messages aren't lost
     webviewView.webview.onDidReceiveMessage((msg) => {
       if (msg.type === 'ssoLogin') {
         // Profile name goes into a shell command, so only allow safe characters
@@ -55,6 +56,8 @@ class AgentCoreViewProvider {
     webviewView.onDidDispose(() => {
       this._pyProcess?.kill();
     });
+
+    await this._startPythonBridge();
   }
 
   async _ensurePythonEnv() {
@@ -157,11 +160,17 @@ class AgentCoreViewProvider {
     this._pyProcess.stderr?.on('data', (data) => {
       console.error(`Python stderr: ${data}`);
     });
+
+    for (const payload of this._pending.splice(0)) {
+      this._sendToPython(payload);
+    }
   }
 
   _sendToPython(payload) {
     if (this._pyProcess && this._pyProcess.stdin) {
       this._pyProcess.stdin.write(JSON.stringify(payload) + '\n');
+    } else {
+      this._pending.push(payload);
     }
   }
 
