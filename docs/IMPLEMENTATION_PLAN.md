@@ -210,7 +210,7 @@ Done in three rounds, each on branch `phase-6-webview`, tested by the user and c
 
 #### Round 6a: Foundation (no visible change)
 
-- [ ] **T6.0** *(from the design review)* Move the webview out of the template string in `extension.js` into `media/webview/{main.js,main.css}`, loaded via `asWebviewUri`. CSP: `script-src ${cspSource} 'nonce-…'`, `style-src ${cspSource}`. No more `\${}` escaping, and the files can be linted and edited normally. Do this first in Phase 6, before the UI grows.
+- [x] **T6.0** *(from the design review)* Move the webview out of the template string in `extension.js` into `media/webview/{main.js,main.css}`, loaded via `asWebviewUri`. CSP: `script-src ${cspSource} 'nonce-…'`, `style-src ${cspSource}`. No more `\${}` escaping, and the files can be linted and edited normally. Do this first in Phase 6, before the UI grows.
 
 *Done when:* the panel looks and behaves exactly as before (Phase 5 tests 1-2 pass again), `extension.js` contains no webview HTML/CSS/JS, and DevTools shows no CSP violations.
 
