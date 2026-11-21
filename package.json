@@ -5,7 +5,7 @@
   "publisher": "internal-tools",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.146.0"
+    "vscode": "^1.147.0"
   },
   "categories": [
     "Other"
@@ -14,7 +14,7 @@
   "main": "./extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "agentcore-sidebar",
           "title": "AgentCore Chat",
@@ -63,6 +63,11 @@
       }
     },
     "commands": [
+      {
+        "command": "agentcore.openChat",
+        "title": "Open Chat",
+        "category": "AgentCore"
+      },
       {
         "command": "agentcore.showLogs",
         "title": "Show Logs",

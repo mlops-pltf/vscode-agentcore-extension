@@ -21,6 +21,10 @@ function activate(context) {
     vscode.window.registerWebviewViewProvider('agentcoreChatView', provider, {
       webviewOptions: { retainContextWhenHidden: true }
     }),
+    // Works wherever the user has put the view (they can drag it to the right side)
+    vscode.commands.registerCommand('agentcore.openChat', () =>
+      vscode.commands.executeCommand('agentcoreChatView.focus')
+    ),
     vscode.commands.registerCommand('agentcore.showLogs', () => log.show()),
     vscode.commands.registerCommand('agentcore.restartBackend', () => provider.restartBridge()),
     vscode.workspace.onDidChangeConfiguration((e) => provider.onConfigChanged(e))
@@ -119,6 +123,9 @@ class AgentCoreViewProvider {
     });
 
     webviewView.onDidDispose(() => {
+      // If VS Code re-creates the view (e.g. after the user moves it), the new one can
+      // resolve before the old one is disposed; only stop Python for the current view
+      if (this._view !== webviewView) return;
       this._view = undefined;
       this._stopBridge();
     });
