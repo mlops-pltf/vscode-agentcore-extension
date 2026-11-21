@@ -13,7 +13,7 @@ Keywords in the prompt pick a scenario:
   input     A2A task stops in the input-required state (answer it to continue)
   fail      A2A task ends in the failed state
   rpcerror  A2A agent returns a JSON-RPC error
-  markdown  the reply is a Markdown sample (headings, lists, code, links)
+  markdown  the reply is a Markdown sample (headings, lists, a table, code, links)
 """
 import json
 import threading
@@ -35,6 +35,11 @@ Here is how to **deploy** it with *one* command, plus a few `settings` worth kno
    - pick a region, e.g. `eu-central-1`
    - pick an execution role
 3. Launch it.
+
+| Step | Command | Time |
+|---|---|---:|
+| Configure | `agentcore configure` | 1 min |
+| Launch | `agentcore launch` | 5 min |
 
 ```bash
 agentcore configure --entrypoint agent.py

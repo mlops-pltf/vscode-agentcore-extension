@@ -216,6 +216,11 @@ test('Markdown replies: rendered while streaming, safe links, code-block actions
   assert.deepStrictEqual([...text.querySelectorAll('ol ul li')].map((li) => li.textContent), ['pick a region, e.g. eu-central-1', 'pick an execution role']);
   assert.ok(text.querySelector('blockquote code'));
   assert.ok(text.querySelector('hr'));
+  const table = text.querySelector('.table-wrap table');
+  assert.deepStrictEqual([...table.querySelectorAll('th')].map((th) => th.textContent), ['Step', 'Command', 'Time']);
+  assert.deepStrictEqual([...table.querySelectorAll('tbody tr')].map((tr) => tr.textContent), ['Configureagentcore configure1 min', 'Launchagentcore launch5 min']);
+  assert.ok(table.querySelector('td code'), 'inline Markdown inside cells');
+  assert.strictEqual(table.querySelector('tbody td:last-child').className, 'align-right');
 
   const blocks = [...text.querySelectorAll('.code-block')];
   assert.deepStrictEqual(blocks.map((b) => b.querySelector('.lang').textContent), ['bash', 'python']);

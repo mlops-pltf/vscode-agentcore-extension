@@ -2,7 +2,8 @@
 //   parse(text)         -> a tree of plain objects (no DOM; unit-tested in Node)
 //   render(tree, hooks) -> DOM nodes built with createElement/textContent only
 // Supports paragraphs, headings, **bold**, *italic*, ~~strike~~, `code`, fenced
-// code blocks, bulleted/numbered lists (nested), block quotes, rules and links.
+// code blocks, bulleted/numbered lists (nested), block quotes, rules, links and
+// GitHub-style tables.
 // Single newlines inside a paragraph are kept as line breaks (agents rely on them).
 (function (app) {
   // ---------- blocks ----------
@@ -15,6 +16,36 @@
   const ORDERED = /^( *)(\d{1,9})[.)]( +)(.*)$/;
 
   const indentOf = (line) => line.match(/^ */)[0].length;
+
+  // Tables: a header row, then a delimiter row like |---|:---:|---:|
+  const TABLE_DELIMITER = /^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+  // Cells of a table row; "\|" is a literal pipe inside a cell
+  function tableCells(line) {
+    let row = line.trim();
+    if (row.startsWith('|')) row = row.slice(1);
+    if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
+    return row.split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, '|'));
+  }
+
+  function tableStartsAt(lines, i) {
+    const next = lines[i + 1];
+    return lines[i].includes('|') && next !== undefined && next.includes('|') && TABLE_DELIMITER.test(next)
+      && tableCells(next).length === tableCells(lines[i]).length;
+  }
+
+  function parseTable(lines, i, blocks) {
+    const header = tableCells(lines[i]);
+    const align = tableCells(lines[i + 1]).map((cell) =>
+      cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : cell.startsWith(':') ? 'left' : '');
+    const fit = (cells) => header.map((_, c) => parseInline(cells[c] || ''));
+    const rows = [];
+    for (i += 2; i < lines.length && lines[i].trim() && lines[i].includes('|') && !startsBlock(lines[i]); i++) {
+      rows.push(fit(tableCells(lines[i])));
+    }
+    blocks.push({ type: 'table', align, header: fit(header), rows });
+    return i;
+  }
 
   function listMarker(line) {
     let m = BULLET.exec(line);
@@ -63,9 +94,13 @@
         blocks.push({ type: 'quote', children: parseBlocks(inner) });
       } else if (listMarker(line)) {
         i = parseList(lines, i, blocks);
+      } else if (tableStartsAt(lines, i)) {
+        i = parseTable(lines, i, blocks);
       } else {
         const para = [];
-        for (; i < lines.length && lines[i].trim() && !startsBlock(lines[i]); i++) para.push(lines[i].trim());
+        for (; i < lines.length && lines[i].trim() && !startsBlock(lines[i]) && !(para.length && tableStartsAt(lines, i)); i++) {
+          para.push(lines[i].trim());
+        }
         blocks.push({ type: 'paragraph', children: parseInline(para.join('\n')) });
       }
     }
@@ -210,9 +245,37 @@
         quote.appendChild(render(block.children, hooks));
         return quote;
       }
+      case 'table':
+        return renderTable(block, hooks);
       default:
         return document.createElement('hr');
     }
+  }
+
+  // Wide tables scroll sideways inside their wrapper instead of widening the chat
+  function renderTable(block, hooks) {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    const row = (cells, tag) => {
+      const tr = document.createElement('tr');
+      cells.forEach((cell, c) => {
+        const td = renderInline(document.createElement(tag), cell, hooks);
+        if (block.align[c]) td.className = 'align-' + block.align[c];
+        tr.appendChild(td);
+      });
+      return tr;
+    };
+    const head = document.createElement('thead');
+    head.appendChild(row(block.header, 'th'));
+    table.appendChild(head);
+    if (block.rows.length) {
+      const body = document.createElement('tbody');
+      for (const cells of block.rows) body.appendChild(row(cells, 'td'));
+      table.appendChild(body);
+    }
+    wrap.appendChild(table);
+    return wrap;
   }
 
   function renderCode(block, hooks) {

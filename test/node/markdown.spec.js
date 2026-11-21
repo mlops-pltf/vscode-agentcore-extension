@@ -98,3 +98,27 @@ test('every prefix of a reply parses (streaming never throws)', () => {
   const sample = '# T\n\n1. **a** [l](https://x.example)\n   ```sh\n   ls\n   ```\n> q `c`\n\n***\n_e_ ~~s~~';
   for (let i = 0; i <= sample.length; i++) assert.ok(Array.isArray(parse(sample.slice(0, i))));
 });
+
+test('tables: header, alignment, inline content, escaped pipes, ragged rows', () => {
+  const [table, after] = md('|Day|Focus|Hours|\n|:---|:---:|---:|\n|Mon|**API** `v2`|4|\n| Tue | a \\| b |\n\nafter');
+  assert.strictEqual(table.type, 'table');
+  assert.deepStrictEqual(table.align, ['left', 'center', 'right']);
+  assert.deepStrictEqual(table.header, [[text('Day')], [text('Focus')], [text('Hours')]]);
+  assert.deepStrictEqual(table.rows, [
+    [[text('Mon')], [{ type: 'strong', children: [text('API')] }, text(' '), { type: 'code', text: 'v2' }], [text('4')]],
+    [[text('Tue')], [text('a | b')], []]
+  ]);
+  assert.strictEqual(after.type, 'paragraph');
+
+  // Without outer pipes, and right after a paragraph line
+  const blocks = md('Plan:\nDay | Focus\n--- | ---\nMon | API');
+  assert.deepStrictEqual(blocks.map((b) => b.type), ['paragraph', 'table']);
+  assert.deepStrictEqual(blocks[1].rows, [[[text('Mon')], [text('API')]]]);
+});
+
+test('not tables: no delimiter yet (streaming), column mismatch, plain pipes', () => {
+  assert.strictEqual(md('|Day|Focus|')[0].type, 'paragraph', 'header alone while the delimiter is still coming');
+  assert.strictEqual(md('|Day|Focus|\n|---|')[0].type, 'paragraph', 'delimiter must match the header');
+  assert.strictEqual(md('a | b\nc | d')[0].type, 'paragraph');
+  assert.strictEqual(md('|a|\n---')[1].type, 'rule', 'a rule is not a delimiter row');
+});

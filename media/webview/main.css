@@ -237,6 +237,13 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
   border-radius: 4px;
   background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
 }
+.table-wrap { margin: 0 0 10px; overflow-x: auto; }
+.text table { border-collapse: collapse; font-size: 12px; }
+.text th, .text td { padding: 4px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.text th { font-weight: 600; background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1)); }
+.text tbody tr:nth-child(even) { background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.05)); }
+.text .align-center { text-align: center; }
+.text .align-right { text-align: right; }
 .code-block {
   margin: 0 0 10px;
   overflow: hidden;
