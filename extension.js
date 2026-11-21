@@ -22,7 +22,7 @@ function activate(context) {
     onMessage: (message) => view.post(message),
     onState: (state) => view.post({ type: 'bridge', state })
   });
-  view = new ChatViewProvider({ extensionUri: context.extensionUri, bridge, getSettings: readSettings });
+  view = new ChatViewProvider({ extensionUri: context.extensionUri, bridge, getSettings: readSettings, log });
 
   context.subscriptions.push(
     log,

@@ -6,6 +6,11 @@
   const { $, newId, setOptions, setPlaceholder } = app.dom;
   const chatView = app.chat;
 
+  // Copy, open link, insert code...: handled by the extension (src/editorActions.js)
+  chatView.configure({
+    onEditor: (op, fields) => vscode.postMessage({ type: 'editor', op, ...fields })
+  });
+
   // Starting values written into the page by extension.js (see chatView.js _getHtml)
   const init = JSON.parse($('init').textContent);
   let sessionId = init.sessionId;
@@ -169,8 +174,18 @@
     chatView.appendMessage(chat, prompt, 'user');
     promptInput.value = '';
     autoGrow();
+    invoke({ prompt, agentArn, protocol });
+  }
+
+  // Ask the agent; `replace` is a failed reply to put the new one in place of (Retry)
+  function invoke(request, replace) {
+    // Only the latest failed reply can be retried
+    for (const button of chat.querySelectorAll('.retry')) button.remove();
     const requestId = newId();
-    requests.set(requestId, chatView.createReply(chat, currentAgent() ? currentAgent().name : 'Agent'));
+    const reply = chatView.createReply(chat, currentAgent() ? currentAgent().name : 'Agent');
+    if (replace) replace.bubble.replaceWith(reply.bubble);
+    reply.request = request;
+    requests.set(requestId, reply);
     turns += 1;
     updateBusy();
 
@@ -178,11 +193,17 @@
       action: 'invoke_agent',
       requestId,
       profile: profileSelect.value,
-      agentArn,
-      protocol,
-      prompt,
+      agentArn: request.agentArn,
+      protocol: request.protocol,
+      prompt: request.prompt,
       sessionId
     });
+  }
+
+  // Failed replies only: re-running a successful one could repeat its side effects
+  function retry(reply) {
+    if (requests.size > 0) return;
+    invoke(reply.request, reply);
   }
 
   function stopAll() {
@@ -191,12 +212,12 @@
     }
   }
 
-  // Stop tracking a reply and render how it ended
+  // Stop tracking a reply and render how it ended; failed replies offer Retry
   function finish(requestId, outcome) {
     const reply = requests.get(requestId);
     if (!reply) return undefined;
     requests.delete(requestId);
-    chatView.finishReply(reply, outcome);
+    chatView.finishReply(reply, { ...outcome, onRetry: () => retry(reply) });
     updateBusy();
     return reply;
   }

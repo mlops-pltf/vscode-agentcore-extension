@@ -50,6 +50,15 @@ class BridgeSmokeTest(unittest.TestCase):
         c = self.for_request(events, "C")
         self.assertEqual([e["type"] for e in c], ["error"])
 
+    def test_markdown_reply_keeps_newlines_and_indentation(self):
+        from agentcore.mock_runtime import MARKDOWN_SAMPLE
+        a2a = dict(invoke("M2", "markdown please"), protocol="A2A")
+        a2a_stream = dict(a2a, requestId="M3", settings={"a2aStreaming": True})
+        events = self.run_bridge([invoke("M1", "markdown please"), a2a, a2a_stream])
+        for request_id in ("M1", "M2", "M3"):
+            chunks = [e["text"] for e in self.for_request(events, request_id) if e["type"] == "chunk"]
+            self.assertEqual("".join(chunks), MARKDOWN_SAMPLE, request_id)
+
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)
         s = self.for_request(events, "S")

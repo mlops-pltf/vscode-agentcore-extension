@@ -89,6 +89,66 @@ test('crash recovery: restarts with backoff, queues messages, then gives up', { 
   assert.ok(provider.bridge.process, 'Restart Backend starts it again');
 });
 
+test('editor actions from the panel are checked and carried out', async (t) => {
+  const { ext, state, view } = await started();
+  t.after(() => ext.deactivate());
+  const editor = (op, fields) => view.send({ type: 'editor', op, ...fields });
+  const settle = () => sleep(50);
+
+  editor('copy', { text: '# reply' });
+  await settle();
+  assert.strictEqual(state.clipboard, '# reply');
+
+  editor('openLink', { url: 'https://example.com/docs' });
+  editor('openLink', { url: 'javascript:alert(1)' });
+  editor('openLink', { url: 'file:///etc/hosts' });
+  editor('openLink', { url: 'not a url' });
+  await settle();
+  assert.deepStrictEqual(state.opened, ['https://example.com/docs']);
+  assert.strictEqual(state.logs.filter((l) => l.startsWith('warn: Blocked a link')).length, 3);
+
+  editor('insertAtCursor', { text: 'x = 1' });
+  await settle();
+  assert.match(state.infos.pop(), /open a file first/, 'no editor: told, nothing thrown');
+  const edits = [];
+  state.editor = {
+    document: 'the-doc', viewColumn: 1, selections: ['cursor-1', 'cursor-2'],
+    edit: (fn) => { fn({ replace: (selection, text) => edits.push([selection, text]) }); return Promise.resolve(true); }
+  };
+  editor('insertAtCursor', { text: 'x = 1' });
+  await settle();
+  assert.deepStrictEqual(edits, [['cursor-1', 'x = 1'], ['cursor-2', 'x = 1']]);
+  assert.strictEqual(state.shown.pop(), 'the-doc', 'editor focused after inserting');
+
+  editor('newFile', { text: 'print(1)', language: 'py' });
+  editor('newFile', { text: 'ls', language: 'bash' });
+  editor('newFile', { text: '?', language: 'klingon' });
+  await settle();
+  assert.deepStrictEqual(state.documents.map((d) => d.language), ['python', 'shellscript', 'plaintext']);
+  assert.strictEqual(state.documents[0].content, 'print(1)');
+
+  editor('insertInTerminal', { text: 'ls -la\n' });
+  await settle();
+  const created = state.terminals.pop();
+  assert.ok(created.shown);
+  assert.deepStrictEqual(created.sent, [['ls -la', false]], 'inserted, never run');
+
+  const active = state.newTerminal('zsh');
+  active.active = true;
+  editor('insertInTerminal', { text: 'cd /tmp\nls\n' });
+  await settle();
+  assert.deepStrictEqual(active.sent, [], 'multi-line text is pasted, not sent line by line');
+  assert.strictEqual(state.pasted, 'cd /tmp\nls');
+  assert.strictEqual(state.clipboard, '# reply', "the user's clipboard is put back");
+
+  editor('runCommand', { text: 'rm -rf /' });
+  editor('copy', { text: 'x'.repeat(1000001) });
+  await settle();
+  assert.ok(state.logs.includes('warn: Unknown editor action from the panel: runCommand'));
+  assert.strictEqual(state.clipboard, '# reply', 'oversized text ignored');
+  assert.ok(!view.posted.some((m) => m.type === 'error'), 'editor messages never reach Python');
+});
+
 test('a missing Python is reported, not thrown', async (t) => {
   const { ext, state, provider } = await started();
   t.after(() => ext.deactivate());

@@ -12,6 +12,7 @@ Keywords in the prompt pick a scenario:
   input     A2A task stops in the input-required state (answer it to continue)
   fail      A2A task ends in the failed state
   rpcerror  A2A agent returns a JSON-RPC error
+  markdown  the reply is a Markdown sample (headings, lists, code, links)
 """
 import json
 import threading
@@ -23,6 +24,34 @@ from agentcore.errors import AgentCoreError
 
 FAST_DELAY = 0.04
 SLOW_DELAY = 1.0
+
+MARKDOWN_SAMPLE = """## Deploying the demo agent
+
+Here is how to **deploy** it with *one* command, plus a few `settings` worth knowing.
+
+1. Read the [AgentCore guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html).
+2. Configure the agent:
+   - pick a region, e.g. `eu-central-1`
+   - pick an execution role
+3. Launch it.
+
+```bash
+agentcore configure --entrypoint agent.py
+agentcore launch
+```
+
+The handler can stay this small:
+
+```python
+def handler(payload):
+    return {"result": payload["prompt"].upper()}
+```
+
+> Tip: run `agentcore status` to check the endpoint.
+
+---
+
+Links that are not web links stay plain text: [local file](file:///etc/hosts)."""
 
 
 class FakeBody:
@@ -88,6 +117,10 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
     delay = SLOW_DELAY if "slow" in words else FAST_DELAY
     reply = (f"You said: {prompt!r}. This is a mock reply from "
              f"{agent_arn.rsplit('/', 1)[-1]}, streamed word by word.")
+    if "markdown" in words:
+        reply = MARKDOWN_SAMPLE
+        if delay == FAST_DELAY:
+            delay = FAST_DELAY / 4  # a long reply; still visibly streaming
 
     if is_a2a:
         task_id = request.get("params", {}).get("message", {}).get("taskId")

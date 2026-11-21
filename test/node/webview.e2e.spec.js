@@ -193,3 +193,128 @@ test('untrusted names and descriptions are shown as text', async (t) => {
   assert.strictEqual(p.$('agentSelect').options[0].textContent, evil);
   assert.strictEqual(p.empty().querySelector('h2').textContent, evil);
 });
+
+test('Markdown replies: rendered while streaming, safe links, code-block actions', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const editorOps = () => p.sent.filter((m) => m.type === 'editor');
+  p.pick('demo-http-strands');
+
+  p.type('markdown please');
+  // Mid-stream: already Markdown, and a half-received code block has no buttons yet
+  assert.ok(await until(() => p.last().querySelector('.text h2'), 4000), 'heading rendered while streaming');
+  await until(() => p.last().querySelector('.code-block'), 4000);
+  if (!p.idle()) assert.strictEqual(p.last().querySelectorAll('.code-block .icon-btn').length, 0, 'no actions on an open block');
+  await until(p.idle, 10000);
+
+  const text = p.part(p.last(), 'text');
+  assert.strictEqual(text.querySelector('h2').textContent, 'Deploying the demo agent');
+  assert.strictEqual(text.querySelector('strong').textContent, 'deploy');
+  assert.strictEqual(text.querySelector('em').textContent, 'one');
+  assert.strictEqual(text.querySelector('ol').children.length, 3);
+  assert.deepStrictEqual([...text.querySelectorAll('ol ul li')].map((li) => li.textContent), ['pick a region, e.g. eu-central-1', 'pick an execution role']);
+  assert.ok(text.querySelector('blockquote code'));
+  assert.ok(text.querySelector('hr'));
+
+  const blocks = [...text.querySelectorAll('.code-block')];
+  assert.deepStrictEqual(blocks.map((b) => b.querySelector('.lang').textContent), ['bash', 'python']);
+  assert.strictEqual(blocks[1].querySelector('code').textContent, 'def handler(payload):\n    return {"result": payload["prompt"].upper()}');
+  const labels = (block) => [...block.querySelectorAll('.code-head button')].map((b) => b.getAttribute('aria-label'));
+  assert.deepStrictEqual(labels(blocks[0]), ['Copy', 'Insert at Cursor', 'Open in New File', 'Insert into Terminal (does not run it)']);
+  assert.deepStrictEqual(labels(blocks[1]), ['Copy', 'Insert at Cursor', 'Open in New File'], 'terminal only for shell blocks');
+
+  const [copy, insert, newFile, terminal] = blocks[0].querySelectorAll('.code-head button');
+  copy.click();
+  assert.strictEqual(copy.getAttribute('aria-label'), 'Copied');
+  insert.click();
+  terminal.click();
+  blocks[1].querySelectorAll('.code-head button')[2].click();
+  const bashText = 'agentcore configure --entrypoint agent.py\nagentcore launch';
+  assert.deepStrictEqual(plain(editorOps()), [
+    { type: 'editor', op: 'copy', text: bashText },
+    { type: 'editor', op: 'insertAtCursor', text: bashText },
+    { type: 'editor', op: 'insertInTerminal', text: bashText },
+    { type: 'editor', op: 'newFile', text: blocks[1].querySelector('code').textContent, language: 'python' }
+  ]);
+  assert.ok(newFile);
+
+  // Web links open through the extension; other schemes are plain text
+  const links = [...text.querySelectorAll('a')];
+  assert.deepStrictEqual(links.map((a) => a.textContent), ['AgentCore guide']);
+  const click = new p.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  links[0].dispatchEvent(click);
+  assert.ok(click.defaultPrevented, 'the webview never navigates');
+  const url = 'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html';
+  assert.deepStrictEqual(plain(editorOps().pop()), { type: 'editor', op: 'openLink', url });
+  // No href, or VS Code's webview would open it itself, skipping the extension's prompt
+  assert.ok(!links[0].hasAttribute('href'));
+  assert.strictEqual(links[0].title, url);
+  assert.strictEqual(links[0].tabIndex, 0, 'reachable with Tab');
+  links[0].dispatchEvent(new p.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.deepStrictEqual(plain(editorOps().pop()), { type: 'editor', op: 'openLink', url }, 'Enter opens it');
+  assert.ok(text.textContent.includes('plain text: local file.'));
+
+  // Copy reply copies the original Markdown, not the rendered text
+  const copyReply = p.last().querySelector('.reply-actions button');
+  assert.strictEqual(copyReply.getAttribute('aria-label'), 'Copy reply');
+  copyReply.click();
+  assert.match(editorOps().pop().text, /^## Deploying the demo agent\n\nHere is how to \*\*deploy\*\*/);
+  assert.ok(!p.last().querySelector('.retry'), 'no Retry on a successful reply');
+});
+
+test('agent text is never parsed as HTML', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  p.type('hi');
+  const requestId = p.sent.find((m) => m.action === 'invoke_agent').requestId;
+  await until(p.idle);
+  // A second reply driven by hand, as if the agent sent it
+  p.type('again');
+  const id2 = p.sent.filter((m) => m.action === 'invoke_agent').pop().requestId;
+  assert.notStrictEqual(id2, requestId);
+  p.post({ type: 'chunk', requestId: id2, text: '<img src=x onerror=alert(1)> [x](javascript:alert(2)) <script>alert(3)</script>\n```html\n<b>hi</b>\n```' });
+  p.post({ type: 'done', requestId: id2, meta: { protocol: 'A2A', state: 'completed' } });
+  const text = p.part(p.last(), 'text');
+  assert.strictEqual(p.document.querySelectorAll('#chat img, #chat script, #chat b').length, 0);
+  assert.strictEqual(text.querySelectorAll('a').length, 0, 'javascript: link stays text');
+  assert.ok(text.textContent.includes('<img src=x onerror=alert(1)>'));
+  assert.strictEqual(text.querySelector('code').textContent, '<b>hi</b>');
+});
+
+test('Retry: only on the latest failed reply, resends the same request in place', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const invokes = () => p.sent.filter((m) => m.action === 'invoke_agent');
+  p.pick('demo-http-strands');
+
+  p.type('error please');
+  await until(p.idle);
+  const failed = p.last();
+  assert.ok(p.part(failed, 'error-text'));
+  assert.strictEqual(p.part(failed, 'reply-actions').querySelectorAll('.icon-btn').length, 0, 'nothing to copy');
+  failed.querySelector('.retry').click();
+  assert.ok(!p.idle(), 'busy again');
+  assert.strictEqual(p.bubbles().length, 1, 'the new reply takes the failed one\'s place');
+  assert.strictEqual(p.document.querySelectorAll('.msg.user').length, 1, 'the prompt is not repeated');
+  const [first, second] = plain(invokes());
+  assert.notStrictEqual(first.requestId, second.requestId);
+  delete first.requestId;
+  delete second.requestId;
+  assert.deepStrictEqual(second, first, 'same prompt, agent, protocol and session');
+  await until(p.idle);
+  assert.ok(p.last().querySelector('.retry'), 'failed again: Retry offered again');
+
+  p.type('hi');
+  assert.strictEqual(p.document.querySelectorAll('.retry').length, 0, 'a new prompt removes older Retry buttons');
+  await until(p.idle);
+  assert.ok(!p.last().querySelector('.retry'));
+
+  // Backend lost mid-reply: Retry too
+  p.type('slow');
+  await sleep(100);
+  p.post({ type: 'bridge', state: 'restarting' });
+  assert.ok(p.last().querySelector('.retry'));
+});

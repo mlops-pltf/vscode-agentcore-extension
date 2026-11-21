@@ -38,29 +38,67 @@ function createVscodeStub(config = {}) {
     commands: {},
     executed: [],
     registered: [],
-    configListeners: []
+    configListeners: [],
+    // Editor actions (src/editorActions.js)
+    clipboard: 'previous clipboard',
+    opened: [],
+    infos: [],
+    shown: [],
+    documents: [],
+    editor: undefined,
+    terminals: []
+  };
+  const terminal = (name) => {
+    const t = { name, shown: false, sent: [], show() { t.shown = true; }, sendText(text, run) { t.sent.push([text, run]); } };
+    state.terminals.push(t);
+    return t;
   };
   const log = (level) => (message) => state.logs.push(`${level}: ${message}`);
   currentStub = {
     __state: state,
     ProgressLocation: { Notification: 15 },
-    Uri: { joinPath: (base, ...parts) => ({ fsPath: path.join(base.fsPath, ...parts) }) },
+    Uri: {
+      joinPath: (base, ...parts) => ({ fsPath: path.join(base.fsPath, ...parts) }),
+      parse: (value) => {
+        const url = new URL(value);
+        return { scheme: url.protocol.slice(0, -1), toString: () => value };
+      }
+    },
+    env: {
+      clipboard: {
+        readText: () => Promise.resolve(state.clipboard),
+        writeText: (text) => { state.clipboard = text; return Promise.resolve(); }
+      },
+      openExternal: (uri) => { state.opened.push(String(uri)); return Promise.resolve(true); }
+    },
+    languages: { getLanguages: () => Promise.resolve(['plaintext', 'python', 'shellscript', 'typescript']) },
     window: {
+      get activeTextEditor() { return state.editor; },
+      get activeTerminal() { return state.terminals.find((t) => t.active); },
+      showInformationMessage: (message) => { state.infos.push(message); return Promise.resolve(undefined); },
+      showTextDocument: (document) => { state.shown.push(document); return Promise.resolve(); },
       createOutputChannel: () => ({ info: log('info'), warn: log('warn'), error: log('error'), show: () => state.logs.push('SHOWN'), dispose() {} }),
       registerWebviewViewProvider: (id, provider) => { state.registered.push(id); state.provider = provider; return { dispose() {} }; },
       showErrorMessage: (message, ...buttons) => { state.errors.push({ message, buttons }); return Promise.resolve(undefined); },
       withProgress: (_options, task) => task(),
-      createTerminal: () => ({ show() {}, sendText() {} })
+      createTerminal: terminal
     },
     commands: {
       registerCommand: (id, fn) => { state.commands[id] = fn; return { dispose() {} }; },
-      executeCommand: (id) => { state.executed.push(id); return Promise.resolve(); }
+      executeCommand: (id) => {
+        state.executed.push(id);
+        // Records what a paste into the terminal would have pasted
+        if (id === 'workbench.action.terminal.paste') state.pasted = state.clipboard;
+        return Promise.resolve();
+      }
     },
     workspace: {
       getConfiguration: () => ({ get: (key) => state.config[key] }),
+      openTextDocument: (options) => { state.documents.push(options); return Promise.resolve(options); },
       onDidChangeConfiguration: (fn) => { state.configListeners.push(fn); return { dispose() {} }; }
     }
   };
+  state.newTerminal = terminal;
   return state;
 }
 

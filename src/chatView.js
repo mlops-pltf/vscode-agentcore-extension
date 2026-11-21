@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { runEditorAction } = require('./editorActions');
 
 // The chat panel (a webview view). Shows media/webview, passes the panel's
 // actions to the Python bridge, and handles the few requests meant for VS Code.
@@ -11,11 +12,13 @@ class ChatViewProvider {
    * @param {vscode.Uri} options.extensionUri
    * @param {import('./pythonBridge').PythonBridge} options.bridge
    * @param {() => object} options.getSettings
+   * @param {object} options.log   the Output channel
    */
-  constructor({ extensionUri, bridge, getSettings }) {
+  constructor({ extensionUri, bridge, getSettings, log }) {
     this._extensionUri = extensionUri;
     this.bridge = bridge;
     this._getSettings = getSettings;
+    this._log = log;
     this._view = undefined;
   }
 
@@ -66,6 +69,10 @@ class ChatViewProvider {
       vscode.commands.executeCommand('agentcore.showLogs');
       return;
     }
+    if (msg.type === 'editor') {
+      runEditorAction(msg, this._log).catch((e) => this._log.error(`Editor action ${msg.op} failed: ${e.message}`));
+      return;
+    }
     this.bridge.send(msg);
   }
 
@@ -77,6 +84,7 @@ class ChatViewProvider {
       nonce: crypto.randomBytes(16).toString('base64'),
       mainCss: asset('main.css'),
       domJs: asset('dom.js'),
+      markdownJs: asset('markdown.js'),
       chatJs: asset('chat.js'),
       mainJs: asset('main.js'),
       // Starting values for main.js; "<" is escaped so a value can't close the <script> tag

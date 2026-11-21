@@ -59,5 +59,39 @@
     return span;
   }
 
-  app.dom = { $, newId, el, setOptions, setPlaceholder, robotIcon, avatar };
+  // Small stroke icons (16x16 grid) for reply and code-block actions
+  const ICONS = {
+    copy: 'M5.5 5.5h7v7h-7z M3.5 10.5v-7h7',
+    check: 'M3.5 8.5l3 3 6-7',
+    insert: 'M8 2.5v7 M5 6.5l3 3 3-3 M3 13h10',
+    newFile: 'M4 2.5h5l3 3v8H4z M9 2.5v3h3 M8 8v4 M6 10h4',
+    terminal: 'M2.5 3.5h11v9h-11z M5 6.5l2 1.5-2 1.5 M8.5 10h2.5',
+    retry: 'M3 8a5 5 0 1 0 1.5-3.6 M3 2.5v3h3'
+  };
+
+  function icon(name, size = 14) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    const attrs = {
+      viewBox: '0 0 16 16', width: size, height: size, 'aria-hidden': 'true', fill: 'none',
+      stroke: 'currentColor', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+    };
+    for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', ICONS[name]);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  // An icon-only button; label is its tooltip and accessible name
+  function iconButton(name, label, onClick, className = '') {
+    const button = el('button', ('icon-btn small ' + className).trim());
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.appendChild(icon(name));
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  app.dom = { $, newId, el, setOptions, setPlaceholder, robotIcon, avatar, icon, iconButton };
 })(window.AgentCore = window.AgentCore || {});
