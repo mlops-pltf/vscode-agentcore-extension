@@ -52,6 +52,22 @@ def list_profiles():
     return aws.list_profiles()
 
 
+_MOCK_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/"
+
+
+def list_agents(profile: str) -> List[dict]:
+    return [
+        {"name": "demo-http-strands", "arn": _MOCK_ARN + "demo_http_strands-Ab12Cd34Ef",
+         "description": "Mock Strands agent over HTTP (SSE streaming)", "protocol": "HTTP"},
+        {"name": "demo-a2a", "arn": _MOCK_ARN + "demo_a2a-Gh56Ij78Kl",
+         "description": "Mock agent speaking A2A (JSON-RPC)", "protocol": "A2A"},
+        {"name": "demo-unknown", "arn": _MOCK_ARN + "demo_unknown-Mn90Op12Qr",
+         "description": "Mock agent whose protocol could not be read", "protocol": None},
+        {"name": "demo-mcp-tools", "arn": _MOCK_ARN + "demo_mcp_tools-St34Uv56Wx",
+         "description": "Mock MCP server (not a chat agent, should be hidden)", "protocol": "MCP"},
+    ]
+
+
 def get_runtime_user_id(profile: str) -> str:
     return "mock-user@example.com"
 
