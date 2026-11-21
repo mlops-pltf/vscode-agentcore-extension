@@ -95,7 +95,8 @@
     "pretest": "npm run lint",
     "test": "vscode-test",
     "test:js": "node --test --test-concurrency=1 test/node/*.spec.js",
-    "test:py": ".venv/bin/python -m unittest discover -s python/tests -t python"
+    "test:py": ".venv/bin/python -m unittest discover -s python/tests -t python",
+    "test:sample": "samples/http-agent/.venv/bin/python -m unittest discover -s samples/http-agent -p \"test_*.py\""
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
