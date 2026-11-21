@@ -58,7 +58,7 @@ agents        {data: [{name, arn, description, protocol: "HTTP"|"A2A"|null}]}
 sso_expired   {profile, requestId?}
 chunk         {requestId, text}                 # append to the bubble
 status        {requestId, text}                 # small grey line: "working…", "tool: search"
-done          {requestId, meta: {protocol, contentType, contextId?, taskId?, state?, ms}}
+done          {requestId, meta: {protocol, mock, contentType, contextId?, taskId?, state?, ms}}
 error         {requestId?, message}
 raw           {requestId, line}                 # extension sends this to the Output channel only
 bridge        {state: "ready"|"restarting"|"down"}
@@ -87,7 +87,7 @@ Each task is one small commit that can be reviewed alone. "Done when" is the che
 
 ### Phase 1: Python restructure (same behaviour, new structure)
 
-Target layout:
+Original target layout (superseded by the design review, see "Design review" below):
 
 ```text
 python/
@@ -106,7 +106,7 @@ python/
     fixtures/            # *.sse / *.json captured or hand-written responses
     test_sse.py
     test_text_extract.py
-    test_http_protocol.py
+    test_http_protocol.py   (now test_protocol_http.py)
     test_a2a_protocol.py
     test_bridge_smoke.py
 ```
@@ -133,17 +133,55 @@ python/
   - `statusCode >= 400` → `error` with the body text.
 - [x] **T2.5** Tests: one fixture for each A3 shape plus a Strands "both" stream (expect no doubled text) and a JSON body.
 
+### Design review (between Phases 2 and 3, branch `refactor-design-validation`)
+
+Checked the design against the plan and the phases still to come (A2A, settings, webview). Behaviour is unchanged; the existing tests pass with the same assertions.
+
+- [x] **R1** `errors.py`: `SsoExpired`/`AgentCoreError` move out of `aws.py`, so protocol and mock code don't depend on boto3.
+- [x] **R2** `response.py`: `AgentResponse.events()` handles content types, SSE framing, sniffing, `[DONE]`, the A11 repr fix, cancel, the raw debug log and error statuses **once**. It yields `Event(value, whole_body)`. Protocols only interpret events, so A2A reuses all of it.
+- [x] **R3** `protocols/` package: an `AgentProtocol` base (`name`, `accept`, `build_payload(ctx)`, `handle(response, emitter, ctx)`), an `InvokeContext` dataclass (prompt, session, settings, `session_state`), and a registry. `http_protocol.py` → `protocols/http.py` (`HttpProtocol`).
+- [x] **R4** `sessions.py`: per-session state store, plus a `reset_session` bridge action (it was in the contract but not implemented).
+- [x] **R5** `invocations.py` + `backends.py`: the request registry, worker threads, cancel and the invoke flow move out of `bridge.py`, which now only reads commands and dispatches them.
+- [x] **R6** `events.claim_stdout()`: the real stdout is kept for protocol messages and stray `print()`s go to stderr, so they can't corrupt the JSON stream.
+- [x] **R7** `done.meta.mock` flag on every reply, so a missing setting can never pass off mock replies as real (shown by the T6.8 badge).
+- [x] **R8** Fix in `extension.js`: the webview's first message could be lost. The listener was attached only after `await _startPythonBridge()` (slow during venv setup). The listener is now attached first and messages queue until Python is running. Checked with a simulated 1.5 s setup: the old code dropped `list_profiles`, the new code delivers it.
+
+Current layout:
+
+```text
+python/
+  bridge.py                # stdin loop + dispatch table only
+  agentcore/
+    errors.py              # SsoExpired, AgentCoreError
+    events.py              # send(), claim_stdout(), Emitter(request_id)
+    cancel.py              # CancelToken
+    backends.py            # backend_for(settings): aws or mock_runtime
+    invocations.py         # start/cancel/wait_all, worker thread per request
+    sessions.py            # per-session state, reset
+    response.py            # AgentResponse.events() -> Event(value, whole_body)
+    sse.py                 # SSE framing
+    text_extract.py        # HTTP reply-shape rules (A3/A4)
+    protocols/
+      __init__.py          # registry: get(name)
+      base.py              # AgentProtocol, InvokeContext
+      http.py              # HttpProtocol
+      a2a.py               # A2aProtocol (Phase 3)
+    aws.py                 # boto3: clients, identity, invoke
+    mock_runtime.py        # fake invoke with the same functions as aws.py
+  tests/                   # unittest; fixtures/ holds raw reply bodies
+```
+
 ### Phase 3: A2A protocol handler
 
-- [ ] **T3.1** `a2a_protocol.SessionState` (`contextId`, `pendingTaskId`) in a dict keyed by `sessionId`; cleared on `reset_session`.
-- [ ] **T3.2** `build_payload(prompt, state, streaming, rpc_id)` → JSON-RPC 2.0: `method` = `message/stream` or `message/send`; `params.message = {kind:"message", role:"user", messageId: uuid4, parts:[{kind:"text", text}], contextId?, taskId?}`.
+- [ ] **T3.1** `protocols/a2a.py`: `A2aProtocol(AgentProtocol)`, registered in `protocols/__init__.py`. Conversation state (`contextId`, `pendingTaskId`) lives in `ctx.session_state` (R4) and is cleared by `reset_session`.
+- [ ] **T3.2** `build_payload(ctx)` (streaming from `ctx.settings["a2aStreaming"]`, rpc id = `ctx.request_id`) → JSON-RPC 2.0: `method` = `message/stream` or `message/send`; `params.message = {kind:"message", role:"user", messageId: uuid4, parts:[{kind:"text", text}], contextId?, taskId?}`.
 - [ ] **T3.3** `parts_to_text(parts)`: `text` → text; `data` → fenced json; `file` → `📎 name (uri)`. Accepts both `kind` and `type` (A6).
 - [ ] **T3.4** `handle_result(result)` by `kind` (A7):
   - `message` → chunk(parts)
   - `task` → artifacts' parts → chunk; if there are none, `status.message` → chunk; record `id`/`contextId`/`status.state`
   - `status-update` → `status.message` → **status** line (or chunk if `final` and nothing was emitted yet); state `failed` → error
   - `artifact-update` → chunk (respect `append`; the first artifact chunk of a new artifact starts with a blank-line separator)
-- [ ] **T3.5** `handle_response(resp, …)`: SSE (stream) → each event is a JSON-RPC envelope → `handle_result`; JSON (send) → single envelope. `error` in the envelope → `error` with `code: message`.
+- [ ] **T3.5** `handle(response, emitter, ctx)`: each `response.events()` value is a JSON-RPC envelope (many when streamed, one for send) → `handle_result`. `error` in the envelope → `error` with `code: message`.
 - [ ] **T3.6** Update `SessionState` from the results (A8); `done.meta` includes `contextId`, `taskId`, `state`. If the state is `input-required`, add a status line "Agent is waiting for your input".
 - [ ] **T3.7** Tests: send→Message, send→Task with artifacts, send→Task failed, stream with status+artifact updates, JSON-RPC error, legacy `type` parts, and contextId carried into the second payload.
 
@@ -163,6 +201,8 @@ python/
 - [ ] **T5.5** Kill the Python process on `deactivate` as well as on view dispose.
 
 ### Phase 6: Webview
+
+- [ ] **T6.0** *(from the design review)* Move the webview out of the template string in `extension.js` into `media/webview/{main.js,main.css}`, loaded via `asWebviewUri`. CSP: `script-src ${cspSource} 'nonce-…'`, `style-src ${cspSource}`. No more `\${}` escaping, and the files can be linted and edited normally. Do this first in Phase 6, before the UI grows.
 
 - [ ] **T6.1** Protocol toggle: a segmented control `HTTP | A2A` next to the agent picker. Picking an agent sets it from `agent.protocol` when known. A manual override is saved per agent ARN in `vscode.setState`. The toggle shows an "auto" dot when it matches the detected protocol.
 - [ ] **T6.2** Changing the protocol mid-conversation asks "Start new session?", since an A2A context can't be reused by HTTP.
