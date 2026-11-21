@@ -8,8 +8,10 @@ Keywords in the prompt pick a scenario:
   json   HTTP agent answers with a single application/json body
   slow   one second between lines (to try cancelling)
   error  the agent container fails (RuntimeClientError)
-  tool   the agent reports a tool call before answering
-  input  A2A task stops in the input-required state
+  tool      the agent reports a tool call before answering
+  input     A2A task stops in the input-required state (answer it to continue)
+  fail      A2A task ends in the failed state
+  rpcerror  A2A agent returns a JSON-RPC error
 """
 import json
 import threading
@@ -61,6 +63,9 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
     prompt = _a2a_prompt(request) if is_a2a else request.get("prompt", "")
     words = prompt.lower()
 
+    if is_a2a and "rpcerror" in words:
+        return _json({"jsonrpc": "2.0", "id": request.get("id"),
+                      "error": {"code": -32603, "message": "mock internal error"}})
     if "error" in words:
         raise AgentCoreError("RuntimeClientError: mock agent raised ValueError('something broke')")
 
@@ -69,6 +74,9 @@ def invoke(profile: str, agent_arn: str, session_id: str, payload: bytes,
              f"{agent_arn.rsplit('/', 1)[-1]}, streamed word by word.")
 
     if is_a2a:
+        task_id = request.get("params", {}).get("message", {}).get("taskId")
+        if task_id:
+            reply = f"Thanks, continuing task {task_id}. " + reply
         if request.get("method") == "message/stream":
             return _sse(_a2a_stream_events(request, reply, words), delay)
         return _json(_a2a_send_result(request, reply, words))
@@ -139,6 +147,9 @@ def _a2a_send_result(request: dict, reply: str, words: str) -> dict:
         question = "Which environment should I use: dev or prod?"
         task["status"] = {"state": "input-required",
                           "message": _agent_message(question, context_id, task_id)}
+    elif "fail" in words:
+        task["status"] = {"state": "failed",
+                          "message": _agent_message("Could not reach the deployment API.", context_id, task_id)}
     else:
         task["status"] = {"state": "completed"}
         task["artifacts"] = [{"artifactId": "artifact-1", "name": "response",
@@ -165,6 +176,9 @@ def _a2a_stream_events(request: dict, reply: str, words: str) -> List[dict]:
         events.append(status("working", "Calling tool: web_search"))
     if "input" in words:
         events.append(status("input-required", "Which environment should I use: dev or prod?", final=True))
+        return events
+    if "fail" in words:
+        events.append(status("failed", "Could not reach the deployment API.", final=True))
         return events
 
     tokens = _tokens(reply)
