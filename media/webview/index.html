@@ -1,6 +1,6 @@
 <!--
   AgentCore Chat panel markup. extension.js (_getHtml) fills in the placeholders
-  written in double braces: cspSource, nonce, mainCss and mainJs (webview URIs),
+  written in double braces: cspSource, nonce, mainCss/domJs/chatJs/mainJs (webview URIs),
   and init (starting values as JSON).
 -->
 <!DOCTYPE html>
@@ -64,6 +64,9 @@
   </div>
 
   <script nonce="{{nonce}}" id="init" type="application/json">{{init}}</script>
+  <!-- Classic scripts sharing window.AgentCore, loaded in dependency order -->
+  <script nonce="{{nonce}}" src="{{domJs}}"></script>
+  <script nonce="{{nonce}}" src="{{chatJs}}"></script>
   <script nonce="{{nonce}}" src="{{mainJs}}"></script>
 </body>
 </html>

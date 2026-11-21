@@ -76,6 +76,8 @@ class ChatViewProvider {
       cspSource: webview.cspSource,
       nonce: crypto.randomBytes(16).toString('base64'),
       mainCss: asset('main.css'),
+      domJs: asset('dom.js'),
+      chatJs: asset('chat.js'),
       mainJs: asset('main.js'),
       // Starting values for main.js; "<" is escaped so a value can't close the <script> tag
       init: JSON.stringify({ sessionId: crypto.randomUUID(), settings: this._getSettings() }).replace(/</g, '\\u003c')
