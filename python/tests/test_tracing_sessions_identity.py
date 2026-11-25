@@ -1,6 +1,5 @@
 """Round 6e.2: trace ids (T6.28), stopping sessions (T6.27), identity (T6.29)."""
 import io
-import re
 import unittest
 from unittest import mock
 

@@ -144,7 +144,7 @@ class MockRuntimeTest(unittest.TestCase):
 
     def test_tool(self):
         steps = self.invoke("tool please").of("tool")
-        self.assertEqual([(e["name"], e["status"]) for e in steps], [("web_search", "running")])
+        self.assertEqual([(e["name"], e["status"]) for e in steps], [("web_search", "running"), ("web_search", "success")])
 
     def test_json(self):
         self.assertTrue(self.invoke("json please").text.startswith("You said: 'json please'"))

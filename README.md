@@ -20,7 +20,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 ## Requirements
 
 - VS Code **1.109** or later.
-- **Python 3.9+** on your PATH. On first start the extension creates its own virtual environment and installs `boto3` into it (a few seconds, once).
+- **Python 3.10+** on your PATH. On first start the extension creates its own virtual environment and installs `boto3` into it (a few seconds, once).
 - An **AWS profile** in `~/.aws/config`, normally AWS IAM Identity Center (SSO), with the permissions below.
 
 ## Getting started
@@ -142,7 +142,7 @@ Chats are saved as you go, one file per chat, in VS Code's storage folder for th
 - **"SSO token expired"**: click **Run aws sso login** in the banner, then the refresh button next to the profile.
 - **No agents**: check the region (`agentcore.region`) and that your agents' status is READY. **AgentCore: Show Logs** shows the error from AWS.
 - **"Reconnecting to backend..."**: the Python backend stopped and is restarting. If it keeps failing, the banner offers **Restart** and **Show Logs**.
-- **First start fails**: Python 3.9+ must be on your PATH, or set `agentcore.pythonPath` to a Python that has `boto3`.
+- **First start fails**: Python 3.10+ must be on your PATH, or set `agentcore.pythonPath` to a Python that has `boto3`.
 - **A reply looks wrong**: turn on `agentcore.debugRawResponses`, send the message again, and look at the raw lines in the Output channel.
 
 ## Development

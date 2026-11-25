@@ -27,7 +27,7 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from agentcore.text_extract import DATA, FINAL, extract_text
+from agentcore.text_extract import DATA, FINAL, TEXT_KEYS, extract_text
 
 MODES = ("full", "text", "raw")
 MAX_DEPTH = 3
@@ -43,8 +43,7 @@ HIDDEN_FIELDS = (
 )
 
 # Where the main text may be, in the order text_extract looks
-_MAIN_KEYS = ("data", "result", "message", "delta",
-              "text", "content", "output", "response", "answer", "completion")
+_MAIN_KEYS = ("data", "result", "message", "delta") + TEXT_KEYS
 
 
 def mode(settings: dict) -> str:

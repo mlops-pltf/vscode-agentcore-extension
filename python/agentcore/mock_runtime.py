@@ -255,6 +255,8 @@ def _http_stream_events(reply: str, words: str) -> List[dict]:
     if "tool" in words:
         events.append({"current_tool_use": {"toolUseId": "tool-1", "name": "web_search",
                                             "input": {"query": "agentcore"}}})
+        events.append({"tool_result": {"toolUseId": "tool-1", "status": "success",
+                                       "content": "3 results about AgentCore"}})
     for token in _tokens(reply):
         # Strands emits the raw Bedrock event AND a "data" event for each token
         events.append({"event": {"contentBlockDelta": {"delta": {"text": token}}}})

@@ -1,8 +1,10 @@
 // Rendering of the conversation: welcome card, user prompts and agent replies.
+// Tool steps and the working group are in steps.js, history in history.js.
 // These functions only build and update DOM; state lives in main.js.
 (function (app) {
   const { el, avatar, icon, iconButton } = app.dom;
   const markdown = app.markdown;
+  const steps = app.steps;
 
   // Set by main.js: onEditor(op, fields) asks the extension to copy, open a link,
   // insert code, ... (one {type: "editor", op} message, see chatView.js)
@@ -175,28 +177,6 @@
     codeActions
   };
 
-  // A tool call inside a reply (Phase 13): "Used `name` input", expandable to the
-  // input and result when there are any. step.open survives re-renders.
-  const STEP_VERB = { running: 'Running', success: 'Used', error: 'Failed', stopped: 'Stopped' };
-
-  function toolStep(step) {
-    const expandable = Boolean(step.input || step.result);
-    const box = el(expandable ? 'details' : 'div', 'tool-step');
-    box.dataset.status = step.status;
-    const head = el(expandable ? 'summary' : 'div', 'tool-head');
-    head.append(el('span', 'tool-icon'), el('span', 'tool-verb', STEP_VERB[step.status] || 'Used'),
-      el('code', 'tool-name', step.name || 'tool'));
-    if (step.input) head.appendChild(el('span', 'tool-input', step.input));
-    box.appendChild(head);
-    if (expandable) {
-      box.open = Boolean(step.open);
-      box.addEventListener('toggle', () => { step.open = box.open; });
-      if (step.input) box.append(el('div', 'tool-label', 'Input'), el('pre', 'tool-pre', step.input));
-      if (step.result) box.append(el('div', 'tool-label', step.status === 'error' ? 'Error' : 'Result'), el('pre', 'tool-pre', step.result));
-    }
-    return box;
-  }
-
   // With tool calls, a reply is "working" (narration and steps up to the last
   // tool call) and then the final answer (the text after it): the model's last
   // turn, once all tool results are in. Without tool calls it's all answer.
@@ -218,39 +198,9 @@
     for (const segment of segments) {
       content.appendChild(segment.kind === 'text'
         ? markdown.render(markdown.parse(segment.text), markdownHooks)
-        : toolStep(segment));
+        : steps.toolStep(segment));
     }
     return content;
-  }
-
-  // "Working... (2 tools so far)" while the agent works; "Used 3 tools · 1 failed" after
-  function workSummary(reply) {
-    const steps = [...reply.steps.values()];
-    const count = `${steps.length} tool${steps.length === 1 ? '' : 's'}`;
-    if (!reply.finished) return `Working... (${count} so far)`;
-    const failed = steps.filter((s) => s.status === 'error').length;
-    const stopped = steps.filter((s) => s.status === 'stopped').length;
-    return [`Used ${count}`, failed && `${failed} failed`, stopped && `${stopped} stopped`].filter(Boolean).join(' · ');
-  }
-
-  // The collapsible "working" group: open while the agent works, folded when the
-  // reply is done (unless the user opened or closed it themselves)
-  function workGroup(reply, segments) {
-    const group = el('details', 'work-group');
-    group.dataset.state = reply.finished ? 'done' : 'working';
-    const head = el('summary', 'work-head');
-    head.append(el('span', 'work-icon'), el('span', 'work-summary', workSummary(reply)));
-    group.append(head, el('div', 'work-body'));
-    group.lastChild.appendChild(renderSegments(segments));
-    group.open = reply.workOpen;
-    group.addEventListener('toggle', () => {
-      // Setting .open while rendering also fires "toggle"; only the user's changes count
-      if (group.open !== reply.workOpen) {
-        reply.workOpen = group.open;
-        reply.workToggled = true;
-      }
-    });
-    return group;
   }
 
   // An agent reply: header (avatar + name), optional status line, the content
@@ -290,7 +240,7 @@
       reply.text.replaceChildren(renderSegments(answer));
     } else {
       const content = document.createDocumentFragment();
-      content.appendChild(workGroup(reply, work));
+      content.appendChild(steps.workGroup(reply, renderSegments(work)));
       const answerBox = el('div', 'answer');
       answerBox.appendChild(renderSegments(answer));
       content.appendChild(answerBox);
@@ -379,77 +329,6 @@
     scrollToBottom(reply.container);
   }
 
-  // ---------- chat history (Phase 14) ----------
-
-  const WAITING = ['input-required', 'auth-required'];
-
-  // A saved turn (python/agentcore/history.py), shown like it was: the prompt,
-  // then the reply with its tool steps, footer and actions (no Retry)
-  function renderPastTurn(container, turn) {
-    appendMessage(container, turn.prompt || '', 'user', turn.mentionLength || 0);
-    const saved = turn.reply || {};
-    const meta = saved.meta || {};
-    const reply = createReply(container, turn.agentName || 'Agent');
-    for (const segment of saved.segments || []) {
-      if (segment.kind === 'text') {
-        reply.segments.push({ kind: 'text', text: segment.text || '' });
-        reply.received = true;
-      } else if (segment.kind === 'tool' && segment.id) {
-        const step = { ...segment, open: false };
-        reply.steps.set(step.id, step);
-        reply.segments.push(step);
-      }
-    }
-    finishReply(reply, { footer: footerText(meta), error: saved.error, trace: meta, rawJson: meta.rawJson });
-    if (WAITING.includes(meta.taskState)) setStatus(reply, 'Agent is waiting for your input');
-    if (!reply.segments.length && !saved.error) reply.text.textContent = saved.state === 'cancelled' ? '(cancelled)' : '(empty reply)';
-    return reply;
-  }
-
-  function when(iso) {
-    const date = new Date(iso);
-    return isNaN(date) ? '' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  }
-
-  // The History list. items: [{sessionId, title, agentName, turns, updated, mock}]
-  function renderHistory(container, { items, enabled, currentSessionId, onOpen, onDelete, onClearAll, onBack }) {
-    const view = el('div', 'history');
-    const head = el('div', 'history-head');
-    const back = el('button', 'secondary', '← Back');
-    back.addEventListener('click', onBack);
-    head.append(back, el('h2', '', 'History'));
-    if (items.length) {
-      // Two clicks, so one stray click can't delete everything
-      const clear = el('button', 'secondary clear-all', 'Clear all');
-      clear.addEventListener('click', () => {
-        if (clear.dataset.confirm) return onClearAll();
-        clear.dataset.confirm = '1';
-        clear.textContent = 'Click again to delete all';
-      });
-      head.appendChild(clear);
-    }
-    view.appendChild(head);
-    if (!enabled) view.appendChild(el('p', 'note', 'Saving is off (setting agentcore.history). Saved chats stay here until you delete them.'));
-    if (!items.length) view.appendChild(el('p', 'history-empty', 'No saved chats yet. Chats are saved here as you go.'));
-
-    const list = el('ul', 'history-list');
-    for (const item of items) {
-      const row = el('li', 'history-item' + (item.sessionId === currentSessionId ? ' current' : ''));
-      const open = el('button', 'history-open');
-      open.title = 'Open and continue this chat';
-      open.appendChild(el('span', 'history-title', item.title));
-      const details = [item.agentName, `${item.turns} message${item.turns === 1 ? '' : 's'}`, when(item.updated)].filter(Boolean).join(' · ');
-      const meta = el('span', 'history-meta', details);
-      if (item.mock) meta.prepend(el('span', 'badge', 'MOCK'));
-      open.appendChild(meta);
-      open.addEventListener('click', () => onOpen(item.sessionId));
-      row.append(open, iconButton('trash', 'Delete this chat', () => onDelete(item.sessionId)));
-      list.appendChild(row);
-    }
-    view.appendChild(list);
-    container.replaceChildren(view);
-  }
-
   // e.g. "A2A · streamed · 1.8s · completed"
   function footerText(meta) {
     const parts = [meta.protocol];
@@ -461,7 +340,6 @@
   }
 
   app.chat = {
-    configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, addTool, setStatus, finishReply, footerText,
-    renderPastTurn, renderHistory
+    configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, addTool, setStatus, finishReply, footerText
   };
 })(window.AgentCore);

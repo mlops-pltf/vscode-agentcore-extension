@@ -1,6 +1,6 @@
 import unittest
 
-from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, TOOL, extract_text
+from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, extract_text
 
 
 class ExtractTextTest(unittest.TestCase):
@@ -20,7 +20,8 @@ class ExtractTextTest(unittest.TestCase):
         self.check({"event": {"messageStop": {"stopReason": "end_turn"}}}, None, None)
 
     def test_tool_use(self):
-        self.check({"current_tool_use": {"toolUseId": "t", "name": "search"}}, "search", TOOL)
+        # Tool calls are tool_steps.py's job; they are never reply text
+        self.check({"current_tool_use": {"toolUseId": "t", "name": "search"}}, None, None)
 
     def test_final_result_string(self):
         self.check({"result": "all of it"}, "all of it", FINAL)

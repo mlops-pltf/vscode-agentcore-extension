@@ -408,6 +408,22 @@ User request: "history chat, save the chats based on session-id" (was deferred u
 
 *Done 2026-11-26 (mock and tests). A continued chat sends the saved session id as runtimeSessionId; AgentCore starts a fresh runtime session under it if the old one was stopped.* *Done when:* with the mock, chats appear in History after a reply, reopen with their replies and tool steps, continue (an A2A agent gets the same contextId as before), and can be deleted; with the setting off nothing new is saved.
 
+### Design review 3 (after Phase 14, 2026-11-26)
+
+A scan for stale, redundant and oversized code after Phases 8-14. No unused functions were found; these were. User chose all except D2.
+
+- [x] **R13** (D1) The mock's `tool` demo started a call but never finished it, so since Phase 13 it ended as "Stopped web_search". It now sends a result.
+- [x] **R14** (S1) Remove the `TOOL` kind from `text_extract.py` (and its test): unused since `tool_steps.py` (Phase 13).
+- [x] **R15** (S2) Remove the VS Code template leftovers: `test/extension.test.js` (a "Sample test"), `vsc-extension-quickstart.md`, `.vscode-test.mjs`, and the dev dependencies only they used (`@vscode/test-cli`, `@vscode/test-electron`, `@types/mocha`). `npm test` runs lint, the Python tests and the JS tests.
+- [x] **R16** (S3) Unused `import re` in a test.
+- [x] **R17** (S4) "Python 3.10+" in the README and the setup error (boto3 dropped 3.9; CI tests 3.10).
+- [x] **R18** (S5) `python/tools/chat_cli.py` shows tool steps.
+- [x] **R19** (S6) Section 7 no longer lists chat history as deferred.
+- [x] **R20** (R1) `json_markdown.py` reuses `text_extract`'s list of text field names instead of keeping a copy that had to stay in the same order.
+- [x] **R21** (R2) One keyboard-list helper (↑/↓ with wrap-around, highlighted row, scroll into view) shared by the agent picker and the @ list.
+- [x] **R22** (A1) Split the two largest panel files by feature: chat history into `media/webview/history.js`, tool steps and the working group into `media/webview/steps.js`. No behaviour change; the panel tests guard it.
+- **D2** *(skipped 2026-11-26, open idea)* A2A tool calls as steps. Strands' A2A server sends no tool events (only text), and A2A has no standard for them. Proposed if wanted later: agents add a data part with the HTTP shapes (`current_tool_use`, `tool_result`) to a `working` status update.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*
@@ -435,5 +451,5 @@ Run in the Extension Development Host (F5) with `agentcore.mock = true` and **Ag
 - **Q5** ~~runtimeUserId?~~ **Decided 2026-11-21:** derive it from the SSO identity (see T1.5b, A10).
 
 ## 7. Out of scope here (next "swanky" round)
- *Also deferred (2026-11-21):* accessibility (T6.23: `role="log"`, a `role="status"` announcer, full keyboard reachability with focus rings, `aria-label`s, VoiceOver check) and the Open Chat keybinding; chat history (until the extension is approved), and sending code context (selection / active file / "Ask AgentCore about selection").
+ *Also deferred (2026-11-21):* accessibility (T6.23: `role="log"`, a `role="status"` announcer, full keyboard reachability with focus rings, `aria-label`s, VoiceOver check) and the Open Chat keybinding; sending code context (selection / active file / "Ask AgentCore about selection").
 Markdown + code highlighting with Copy/Insert buttons, codicons, editor-selection context (`@selection`), status bar agent switcher, chat history persistence, export to Markdown.

@@ -61,7 +61,7 @@ async function resolvePython(context) {
         cp.exec(steps.join(' && '), (err, _stdout, stderr) => {
           if (err) {
             vscode.window.showErrorMessage(
-              `AgentCore Chat setup failed (Python 3.9+ required): ${stderr || err.message}`
+              `AgentCore Chat setup failed (Python 3.10+ required): ${stderr || err.message}`
             );
             reject(err);
           } else {

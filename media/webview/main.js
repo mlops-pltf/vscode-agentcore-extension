@@ -3,7 +3,7 @@
 // posts its events back. Rendering lives in chat.js, helpers in dom.js.
 (function (app) {
   const vscode = acquireVsCodeApi();
-  const { $, el, newId, setOptions, setPlaceholder } = app.dom;
+  const { $, newId, setOptions, setPlaceholder } = app.dom;
   const chatView = app.chat;
 
   // Copy, open link, insert code...: handled by the extension (src/editorActions.js)
@@ -47,6 +47,15 @@
   const protocolToggle = $('protocolToggle');
 
   const currentAgent = () => agents.get(currentAgentArn);
+
+  // Saved chats (history.js): list, open, delete; continueChat (below) takes over an opened one
+  const historyView = app.history.create({
+    post: (message) => vscode.postMessage(message),
+    chat,
+    view: $('historyView'),
+    openSessionId: () => (turns > 0 ? sessionId : null),
+    onContinue: (saved) => continueChat(saved)
+  });
 
   // The textarea grows with its content up to the CSS max-height, then scrolls;
   // the @mention highlight follows the text
@@ -189,23 +198,11 @@
     sessionId = newId();
     turns = 0;
     $('switchNotice').hidden = true;
-    closeHistory();
+    historyView.close();
     showWelcome();
   }
 
-  // ---------- chat history (Phase 14) ----------
-
-  function openHistory() {
-    $('historyView').replaceChildren(el('p', 'history-loading', 'Loading...'));
-    $('historyView').hidden = false;
-    chat.hidden = true;
-    vscode.postMessage({ action: 'list_history' });
-  }
-
-  function closeHistory() {
-    $('historyView').hidden = true;
-    chat.hidden = false;
-  }
+  // ---------- chat history (Phase 14; the view is history.js) ----------
 
   // Reopen a saved chat and continue it under its session id
   function continueChat(saved) {
@@ -215,7 +212,7 @@
     turns = saved.turns.length;
     $('switchNotice').hidden = true;
     chat.replaceChildren();
-    for (const turn of saved.turns) chatView.renderPastTurn(chat, turn);
+    historyView.showTurns(chat, saved.turns);
     chatView.appendMessage(chat, `Earlier chat, continued. The agent may not remember it if its session has ended.`, 'notice');
     // The chat's last agent in the picker, without starting a new chat
     const last = saved.turns[saved.turns.length - 1];
@@ -227,7 +224,7 @@
     }
     lastPrompt = last ? last.prompt : lastPrompt;
     vscode.postMessage({ action: 'resume_session', sessionId });
-    closeHistory();
+    historyView.close();
   }
 
   function updateBusy() {
@@ -281,7 +278,7 @@
     // Only the latest failed reply can be retried
     for (const button of chat.querySelectorAll('.retry')) button.remove();
     const requestId = newId();
-    closeHistory();
+    historyView.close();
     const reply = chatView.createReply(chat, request.agentName);
     if (replace) replace.bubble.replaceWith(reply.bubble);
     reply.request = request;
@@ -347,6 +344,7 @@
   // ---------- messages from the extension (one handler per type) ----------
 
   const handlers = {
+    ...historyView.handlers,
     profiles(msg) {
       setOptions(profileSelect, msg.data.map((p) => ({ value: p, label: p })));
       loadIdentity();
@@ -376,25 +374,6 @@
     chunk(msg) {
       const reply = requests.get(msg.requestId);
       if (reply) chatView.addChunk(reply, msg.text);
-    },
-    history(msg) {
-      if ($('historyView').hidden) return;
-      chatView.renderHistory($('historyView'), {
-        items: msg.items,
-        enabled: msg.enabled,
-        currentSessionId: turns > 0 ? sessionId : null,
-        onOpen: (id) => vscode.postMessage({ action: 'get_history', sessionId: id }),
-        onDelete: (id) => vscode.postMessage({ action: 'delete_history', sessionId: id }),
-        onClearAll: () => vscode.postMessage({ action: 'delete_history', all: true }),
-        onBack: closeHistory
-      });
-    },
-    history_chat(msg) {
-      if (msg.chat && msg.chat.turns && msg.chat.turns.length) {
-        continueChat(msg.chat);
-      } else {
-        $('historyView').prepend(el('p', 'note warn', 'That chat could not be opened (it may have been deleted).'));
-      }
     },
     tool(msg) {
       const reply = requests.get(msg.requestId);
@@ -448,7 +427,7 @@
   });
   agentSelect.addEventListener('change', onAgentChanged);
   $('refreshBtn').addEventListener('click', () => loadAgents(true));
-  $('historyBtn').addEventListener('click', () => ($('historyView').hidden ? openHistory() : closeHistory()));
+  $('historyBtn').addEventListener('click', historyView.toggle);
   $('ssoLoginBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'ssoLogin', profile: profileSelect.value });
   });

@@ -42,6 +42,30 @@
     return item;
   }
 
+  // The highlighted row of an agent list, moved with ↑/↓ (wrapping) or the mouse,
+  // and scrolled into view. onMove(row) runs when it moves. Also used by mentions.js.
+  function rowCursor(list, onMove) {
+    let index = 0;
+    const rows = () => list.querySelectorAll('.agent-option');
+    const cursor = {
+      get index() { return index; },
+      set(i) {
+        index = i;
+        rows().forEach((row, n) => row.classList.toggle('active', n === i));
+        const row = rows()[i];
+        if (row) {
+          row.scrollIntoView?.({ block: 'nearest' });
+          if (onMove) onMove(row);
+        }
+      },
+      step(delta, count) { if (count) cursor.set((index + delta + count) % count); },
+      // The list was re-rendered with `count` rows: keep the highlight on a row that exists
+      fit(count) { cursor.set(Math.min(index, Math.max(0, count - 1))); },
+      reset() { index = 0; }
+    };
+    return cursor;
+  }
+
   /**
    * @param {object} parts
    * @param {HTMLSelectElement} parts.select   the hidden agent <select>
@@ -54,7 +78,7 @@
    */
   function create({ select, button, label, popup, input, list, onRefresh }) {
     let shown = [];   // options matching the search
-    let active = 0;   // index in shown
+    const cursor = rowCursor(list, (row) => input.setAttribute('aria-activedescendant', row.id));
 
     const agentOptions = () => [...select.options].filter((option) => option.value);
 
@@ -75,7 +99,7 @@
       input.value = '';
       input.placeholder = `Search ${agentOptions().length} agent${agentOptions().length === 1 ? '' : 's'}...`;
       render();
-      setActive(Math.max(0, shown.findIndex((option) => option.selected)));
+      cursor.set(Math.max(0, shown.findIndex((option) => option.selected)));
       input.focus();
     }
 
@@ -95,16 +119,6 @@
       sync();
     }
 
-    function setActive(index) {
-      active = index;
-      const rows = list.querySelectorAll('.agent-option');
-      rows.forEach((row, i) => row.classList.toggle('active', i === index));
-      if (rows[index]) {
-        input.setAttribute('aria-activedescendant', rows[index].id);
-        rows[index].scrollIntoView?.({ block: 'nearest' });
-      }
-    }
-
     function render() {
       const query = input.value.trim().toLowerCase();
       shown = agentOptions().filter((option) => !query
@@ -112,7 +126,7 @@
         || (option.title || '').toLowerCase().includes(query));
       list.replaceChildren(...shown.map((option, i) => agentRow(option, i, query, {
         onChoose: choose,
-        onHover: (index) => { if (active !== index) setActive(index); }
+        onHover: (index) => { if (cursor.index !== index) cursor.set(index); }
       })));
       if (!shown.length) {
         const none = el('li', 'none', 'No agents match. ');
@@ -122,18 +136,18 @@
         none.appendChild(refresh);
         list.appendChild(none);
       }
-      setActive(Math.min(active, Math.max(0, shown.length - 1)));
+      cursor.fit(shown.length);
     }
 
     button.addEventListener('click', () => (popup.hidden ? open() : close(true)));
-    input.addEventListener('input', () => { active = 0; render(); });
+    input.addEventListener('input', () => { cursor.reset(); render(); });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        if (shown.length) setActive((active + (event.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length);
+        cursor.step(event.key === 'ArrowDown' ? 1 : -1, shown.length);
       } else if (event.key === 'Enter') {
         event.preventDefault();
-        if (shown[active]) choose(shown[active]);
+        if (shown[cursor.index]) choose(shown[cursor.index]);
       } else if (event.key === 'Escape') {
         // Only close the picker; Esc elsewhere stops a reply (main.js)
         event.preventDefault();
@@ -154,5 +168,5 @@
     return { open, close, sync };
   }
 
-  app.picker = { create, agentRow };
+  app.picker = { create, agentRow, rowCursor };
 })(window.AgentCore);

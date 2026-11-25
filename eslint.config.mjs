@@ -12,16 +12,15 @@ const rules = {
 
 export default [
     {
-        ignores: ["**/node_modules/**", "**/.venv/**", ".vscode-test/**"],
+        ignores: ["**/node_modules/**", "**/.venv/**"],
     },
     {
-        // Extension host and tests: Node (CommonJS)
+        // Extension host and tests (node:test): Node (CommonJS)
         files: ["**/*.js"],
         languageOptions: {
             globals: {
                 ...globals.commonjs,
                 ...globals.node,
-                ...globals.mocha,
             },
             ecmaVersion: 2022,
             sourceType: "commonjs",

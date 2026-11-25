@@ -21,7 +21,7 @@
    */
   function create({ input, mirror, popup, list, select, onChange }) {
     let shown = [];
-    let active = 0;
+    const cursor = app.picker.rowCursor(list);
 
     const agentOptions = () => [...select.options].filter((option) => option.value);
     const byName = (name) => agentOptions().find((o) => o.textContent.toLowerCase() === name.toLowerCase());
@@ -69,19 +69,12 @@
         return;
       }
       popup.hidden = false;
-      active = Math.min(active, shown.length - 1);
       list.replaceChildren(...shown.map((option, i) => app.picker.agentRow(option, i, lower, {
         onChoose: insert,
-        onHover: setActive,
+        onHover: (index) => cursor.set(index),
         idPrefix: 'mention-option'
       })));
-      setActive(active);
-    }
-
-    function setActive(index) {
-      active = index;
-      list.querySelectorAll('.agent-option').forEach((row, i) => row.classList.toggle('active', i === index));
-      list.children[index]?.scrollIntoView?.({ block: 'nearest' });
+      cursor.fit(shown.length);
     }
 
     // Replace "@partial" with "@name " and keep whatever was after the caret
@@ -99,9 +92,9 @@
     function handleKey(event) {
       if (popup.hidden) return false;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        setActive((active + (event.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length);
+        cursor.step(event.key === 'ArrowDown' ? 1 : -1, shown.length);
       } else if (event.key === 'Enter' || event.key === 'Tab') {
-        insert(shown[active]);
+        insert(shown[cursor.index]);
       } else if (event.key === 'Escape') {
         close();
         event.stopPropagation();  // Esc elsewhere stops a reply (main.js)
@@ -112,7 +105,7 @@
       return true;
     }
 
-    input.addEventListener('input', () => { active = 0; update(); refresh(); });
+    input.addEventListener('input', () => { cursor.reset(); update(); refresh(); });
     input.addEventListener('click', update);
     input.addEventListener('scroll', () => { mirror.scrollTop = input.scrollTop; });
     input.addEventListener('blur', close);

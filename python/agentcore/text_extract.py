@@ -10,19 +10,18 @@ extract_text() returns (text, kind). The kind tells the caller how to use it:
                "data", so only use these if no "data" text arrived (A4)
   "final"      the complete answer sent at the end: only use it if nothing
                was streamed, otherwise the whole reply would repeat (A4)
-  "tool"       the name of a tool the agent is calling
   "error"      the agent failed; the text says why
   None         not reply text (lifecycle events etc.)
 """
 import json
 from typing import Any, Optional, Tuple
 
-DATA, RAW_EVENT, FINAL, TOOL, ERROR = "data", "raw_event", "final", "tool", "error"
+DATA, RAW_EVENT, FINAL, ERROR = "data", "raw_event", "final", "error"
 
 Result = Tuple[Optional[str], Optional[str]]
 
-# Generic keys some agents use for a plain-text reply
-_TEXT_KEYS = ("text", "content", "output", "response", "answer", "completion")
+# Generic keys some agents use for a plain-text reply (json_markdown.py uses them too)
+TEXT_KEYS = ("text", "content", "output", "response", "answer", "completion")
 
 
 def extract_text(obj: Any) -> Result:
@@ -51,10 +50,9 @@ def extract_text(obj: Any) -> Result:
             return delta["text"], RAW_EVENT
         return None, None
 
-    # Strands tool call in progress: {"current_tool_use": {"name": ...}}
-    tool = obj.get("current_tool_use")
-    if isinstance(tool, dict) and tool.get("name"):
-        return tool["name"], TOOL
+    # Tool calls ({"current_tool_use": ...}) are read by tool_steps.py, not here
+    if "current_tool_use" in obj:
+        return None, None
 
     # End of stream: {"result": "<full text>"} or {"result": {"role": "assistant", "content": [...]}}
     if "result" in obj:
@@ -78,7 +76,7 @@ def extract_text(obj: Any) -> Result:
     if isinstance(delta, str):
         return delta, DATA
 
-    for key in _TEXT_KEYS:
+    for key in TEXT_KEYS:
         value = obj.get(key)
         if isinstance(value, str):
             return value, DATA

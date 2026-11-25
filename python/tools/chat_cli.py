@@ -86,6 +86,10 @@ def print_events(bridge, replies):
             print(event["text"], end="", flush=True)
         elif kind == "status":
             print(f"\n{DIM}  [{event['text']}]{RESET}", flush=True)
+        elif kind == "tool":
+            mark = {"running": "…", "success": "✓", "error": "✕"}.get(event.get("status"), "·")
+            details = event.get("result") or event.get("input") or ""
+            print(f"\n{DIM}  {mark} tool {event.get('name', '?')} {details}{RESET}", flush=True)
         elif kind == "raw":
             print(f"\n{DIM}  raw: {event['line']}{RESET}", flush=True)
         elif kind == "error":
