@@ -52,7 +52,7 @@ test('protocol toggle follows the agent and remembers manual choices', async (t)
   p.pick('demo-a2a');
   p.toggle('HTTP');  // empty chat: no confirmation needed
   assert.strictEqual(p.pressed(), 'HTTP');
-  assert.deepStrictEqual(plain(p.getState()), { protocolOverrides: { [$('agentSelect').value]: 'HTTP' } });
+  assert.deepStrictEqual(plain(p.getState()), { protocolOverrides: { [$('agentSelect').value]: 'HTTP' }, chooser: 'picker' });
   const saved = p.getState();
   p.close();
 
@@ -739,11 +739,51 @@ function keyInBox(p, key) {
   return event;
 }
 
-test('@ pop-up: opens at the start, filters, inserts by keyboard or mouse, highlights', async (t) => {
+test('@ toggle: off = picker (@ is plain text), on = @ mode (picker hidden); remembered', async (t) => {
   const p = openPanel();
   t.after(p.close);
   await p.ready();
   const { $ } = p;
+  const composer = p.document.querySelector('.composer');
+
+  // Picker mode (default): the @ button is off, @ does nothing special
+  assert.strictEqual($('chooserBtn').getAttribute('aria-pressed'), 'false');
+  assert.ok(!composer.classList.contains('mode-mention'));
+  typeInBox(p, '@');
+  assert.strictEqual($('mentionPopup').hidden, true, 'no @ list in picker mode');
+  p.type('@demo-http-strands hi');
+  const plainAt = p.sent.filter((m) => m.action === 'invoke_agent').pop();
+  assert.strictEqual(plainAt.prompt, '@demo-http-strands hi', 'sent as typed');
+  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-a2a', 'to the picker agent');
+  await until(p.idle);
+
+  // @ mode: the button is on, the picker is hidden, the @ list works
+  $('chooserBtn').click();
+  assert.strictEqual($('chooserBtn').getAttribute('aria-pressed'), 'true');
+  assert.ok(composer.classList.contains('mode-mention'), 'picker hidden (CSS)');
+  assert.strictEqual($('promptInput').placeholder, 'Ask demo-a2a, or type @ for another agent...');
+  assert.strictEqual($('agentPicker').hidden, true);
+  $('agentBtn').click();
+  assert.strictEqual($('agentPicker').hidden, true, 'the picker never opens in @ mode');
+  assert.strictEqual(plain(p.getState()).chooser, 'mention');
+  const saved = p.getState();
+  p.close();
+
+  // Remembered after a reload
+  const q = openPanel({ savedState: saved });
+  t.after(q.close);
+  await q.ready();
+  assert.strictEqual(q.$('chooserBtn').getAttribute('aria-pressed'), 'true');
+  typeInBox(q, '@');
+  assert.strictEqual(q.$('mentionPopup').hidden, false);
+});
+
+test('@ mode: the list opens at the start, filters, inserts by keyboard or mouse, highlights', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  $('chooserBtn').click();
   const names = () => [...$('mentionList').querySelectorAll('.agent-option .name')].map((n) => n.textContent);
 
   typeInBox(p, '@');
@@ -752,112 +792,89 @@ test('@ pop-up: opens at the start, filters, inserts by keyboard or mouse, highl
   typeInBox(p, '@HTTP');
   assert.deepStrictEqual(names(), ['demo-http-strands']);
   assert.strictEqual($('mentionList').querySelector('mark').textContent, 'http');
-
-  // Enter inserts the name (and does not send)
-  assert.ok(keyInBox(p, 'Enter').defaultPrevented);
+  assert.ok(keyInBox(p, 'Enter').defaultPrevented, 'Enter inserts, does not send');
   assert.strictEqual($('promptInput').value, '@demo-http-strands ');
-  assert.strictEqual($('mentionPopup').hidden, true);
   assert.ok(!p.sent.some((m) => m.action === 'invoke_agent'));
   assert.strictEqual($('promptMirror').querySelector('.mention').textContent, '@demo-http-strands');
 
-  // ↓ wraps, Tab inserts, text after the caret is kept
   $('promptInput').value = '@demo what is up';
   $('promptInput').setSelectionRange(5, 5);
   $('promptInput').dispatchEvent(new p.window.Event('input'));
-  keyInBox(p, 'ArrowUp');
+  keyInBox(p, 'ArrowUp');  // wraps to the last
   keyInBox(p, 'Tab');
   assert.strictEqual($('promptInput').value, '@demo-unknown what is up');
 
-  // A click picks; Esc only closes the list
   typeInBox(p, '@demo-a');
   $('mentionList').querySelector('.agent-option').click();
   assert.strictEqual($('promptInput').value, '@demo-a2a ');
+  typeInBox(p, 'hi @');
+  assert.strictEqual($('mentionPopup').hidden, true, 'only at the start');
+
+  // Esc in the list while a reply streams closes the list, not the reply
+  p.type('slow');
   typeInBox(p, '@');
   const esc = keyInBox(p, 'Escape');
   assert.ok(esc.defaultPrevented);
-  assert.strictEqual($('mentionPopup').hidden, true);
-
-  // Only at the very start; unknown names aren't highlighted
-  typeInBox(p, 'hi @');
-  assert.strictEqual($('mentionPopup').hidden, true);
-  typeInBox(p, '@zzz');
-  assert.strictEqual($('mentionPopup').hidden, true, 'no match: no list');
-  assert.strictEqual($('promptMirror').querySelector('.mention'), null);
-
-  // Esc in the list while a reply streams closes the list, not the reply
-  p.pick('demo-http-strands');
-  p.type('slow');
-  typeInBox(p, '@');
-  keyInBox(p, 'Escape');
   assert.strictEqual($('mentionPopup').hidden, true);
   assert.ok(!p.sent.some((m) => m.action === 'cancel'));
   $('stopBtn').click();
   await until(p.idle);
 });
 
-test('@agent sends to that agent only, with its own protocol; the picker keeps its agent', async (t) => {
+test('@ mode: a different agent starts a new chat; the same agent or no @ continues', async (t) => {
   const p = openPanel();
   t.after(p.close);
   await p.ready();
   const { $ } = p;
   const invokes = () => p.sent.filter((m) => m.action === 'invoke_agent');
-  const a2aArn = $('agentSelect').value;
+  $('chooserBtn').click();
 
-  p.type('hi');  // demo-a2a, A2A
+  p.type('hi');  // no @: the chat's agent (demo-a2a)
   await until(p.idle);
-  p.type('@demo-http-strands, how are you?');
+  const first = invokes().pop();
+  p.type('@demo-a2a again');  // the same agent: same chat
+  await until(p.idle);
+  assert.strictEqual(invokes().pop().sessionId, first.sessionId);
+  assert.strictEqual(invokes().pop().prompt, 'again', 'sent without the mention');
+  assert.strictEqual(p.bubbles().length, 2);
+
+  p.type('@demo-http-strands, how are you?');  // a different agent: a new chat with this message
   const toHttp = invokes().pop();
-  assert.strictEqual(toHttp.prompt, 'how are you?', 'sent without the mention');
-  assert.strictEqual(toHttp.protocol, 'HTTP');
-  assert.notStrictEqual(toHttp.agentArn, a2aArn);
+  assert.notStrictEqual(toHttp.sessionId, first.sessionId, 'new session');
+  assert.ok(p.sent.some((m) => m.action === 'reset_session' && m.sessionId === first.sessionId), 'old chat ended');
+  assert.strictEqual(toHttp.prompt, 'how are you?');
+  assert.strictEqual(toHttp.protocol, 'HTTP', "the new agent's protocol");
+  assert.strictEqual(p.document.querySelectorAll('.msg.user').length, 1, 'only the new message');
+  assert.strictEqual(p.document.querySelector('.msg.user .mention').textContent, '@demo-http-strands');
+  assert.deepStrictEqual(plain(toHttp.display), { prompt: '@demo-http-strands, how are you?', agentName: 'demo-http-strands', mentionLength: 18 });
+  await until(p.idle);
   assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-http-strands');
-  const bubble = [...p.document.querySelectorAll('.msg.user')].pop();
-  assert.strictEqual(bubble.querySelector('.mention').textContent, '@demo-http-strands');
-  assert.strictEqual(bubble.textContent, '@demo-http-strands, how are you?');
-  await until(p.idle);
-  assert.match(p.part(p.last(), 'footer').textContent, /^HTTP · /);
-  assert.ok(p.part(p.last(), 'text').textContent.startsWith("You said: 'how are you?'"));
+  assert.strictEqual($('chooserBtn').getAttribute('aria-pressed'), 'true', 'the new chat is still in @ mode');
+  typeInBox(p, '@');
+  assert.strictEqual($('mentionPopup').hidden, false, '@ still works in the new chat');
+  $('mentionPopup').hidden = true;
 
-  // Same chat, the picker's agent again
-  assert.strictEqual($('agentSelect').value, a2aArn);
-  assert.strictEqual(p.bubbles().length, 2, 'no new chat');
-  assert.ok(!p.sent.some((m) => m.action === 'reset_session'));
-  p.type('and you?');
-  const back = invokes().pop();
-  assert.strictEqual(back.agentArn, a2aArn);
-  assert.strictEqual(back.protocol, 'A2A');
-  assert.strictEqual(back.sessionId, toHttp.sessionId);
-  await until(p.idle);
-  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-a2a');
-
-  // An agent's chosen protocol is used for @ too
-  p.pick('demo-unknown');
-  p.toggle('A2A');
-  p.pick('demo-a2a');
-  p.type('@demo-unknown hi');
-  assert.strictEqual(invokes().pop().protocol, 'A2A');
+  p.type('and you?');  // no @: the new chat's agent
+  assert.strictEqual(invokes().pop().agentArn, toHttp.agentArn);
   await until(p.idle);
 
-  // Retry goes to the mentioned agent
-  p.type('@demo-http-strands error please');
+  // Retry goes to the same agent
+  p.type('error please');
   await until(p.idle);
   p.last().querySelector('.retry').click();
-  const retried = invokes().pop();
-  assert.strictEqual(retried.prompt, 'error please');
-  assert.strictEqual(retried.protocol, 'HTTP');
-  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-http-strands');
+  assert.strictEqual(invokes().pop().agentArn, toHttp.agentArn);
   await until(p.idle);
 });
 
-test('@ with an unknown agent or no question: a note, nothing sent', async (t) => {
+test('@ mode: an unknown agent or no question gives a note and sends nothing', async (t) => {
   const p = openPanel();
   t.after(p.close);
   await p.ready();
   const { $ } = p;
+  $('chooserBtn').click();
 
   typeInBox(p, '@nobody hi');
   keyInBox(p, 'Enter');
-  assert.strictEqual($('mentionNote').hidden, false);
   assert.strictEqual($('mentionNote').textContent, 'No agent called @nobody. Type @ to pick one.');
   assert.strictEqual($('promptInput').value, '@nobody hi', 'kept for fixing');
   typeInBox(p, '@demo-a2a');
@@ -986,23 +1003,24 @@ test('history: chats are saved, listed, reopened after a restart and continued',
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcore-history-'));
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
 
-  // First "VS Code session": an A2A chat with an @mention and tool steps
+  // First "VS Code session": an @ message with tool steps, then a plain one
   const p = openPanel({ historyDir: folder });
+  t.after(p.close);
   await p.ready();
+  p.$('chooserBtn').click();
+  p.type('@demo-http-strands tools please');
+  assert.strictEqual(p.$('historyBtn').disabled, true, 'History is off while a reply comes in');
+  await until(p.idle, 15000);
+  assert.strictEqual(p.$('historyBtn').disabled, false);
   p.type('hi');
   await until(p.idle);
-  p.type('@demo-http-strands tools please');
-  await until(p.idle, 15000);
-  const firstContext = p.received.find((m) => m.type === 'done' && m.meta.contextId).meta.contextId;
   const savedSession = p.sent.find((m) => m.action === 'invoke_agent').sessionId;
-  const invoke = p.sent.filter((m) => m.action === 'invoke_agent').pop();
-  assert.deepStrictEqual(plain(invoke.display), { prompt: '@demo-http-strands tools please', agentName: 'demo-http-strands', mentionLength: 18 });
 
   p.$('historyBtn').click();
   await until(() => p.$('historyView').querySelector('.history-item'));
   assert.strictEqual(p.$('chat').hidden, true);
   const item = p.$('historyView').querySelector('.history-item');
-  assert.strictEqual(item.querySelector('.history-title').textContent, 'hi');
+  assert.strictEqual(item.querySelector('.history-title').textContent, '@demo-http-strands tools please');
   assert.match(item.querySelector('.history-meta').textContent, /^MOCKdemo-http-strands · 2 messages · /);
   assert.ok(item.classList.contains('current'), 'the open chat is marked');
   p.$('historyView').querySelector('.history-head button').click();  // Back
@@ -1020,26 +1038,23 @@ test('history: chats are saved, listed, reopened after a restart and continued',
   await until(() => !q.$('chat').hidden && q.bubbles().length === 2);
 
   const users = [...q.document.querySelectorAll('.msg.user')];
-  assert.deepStrictEqual(users.map((u) => u.textContent), ['hi', '@demo-http-strands tools please']);
-  assert.strictEqual(users[1].querySelector('.mention').textContent, '@demo-http-strands');
+  assert.deepStrictEqual(users.map((u) => u.textContent), ['@demo-http-strands tools please', 'hi']);
+  assert.strictEqual(users[0].querySelector('.mention').textContent, '@demo-http-strands');
   const [first, second] = q.bubbles();
-  assert.strictEqual(q.part(first, 'name').textContent, 'demo-a2a');
-  assert.ok(q.part(first, 'text').textContent.startsWith("You said: 'hi'"));
-  assert.match(q.part(first, 'footer').textContent, /^A2A · /);
-  assert.strictEqual(second.querySelector('.work-group .work-summary').textContent, 'Used 3 tools · 1 failed');
-  assert.strictEqual(second.querySelectorAll('.tool-step').length, 3);
-  assert.ok(second.querySelector('.answer').textContent.startsWith("The ticket service didn't answer"));
+  assert.strictEqual(first.querySelector('.work-group .work-summary').textContent, 'Used 3 tools · 1 failed');
+  assert.strictEqual(first.querySelectorAll('.tool-step').length, 3);
+  assert.ok(first.querySelector('.answer').textContent.startsWith("The ticket service didn't answer"));
+  assert.ok(q.part(second, 'text').textContent.startsWith("You said: 'hi'"));
+  assert.match(q.part(second, 'footer').textContent, /^HTTP · /);
   assert.ok(!q.document.querySelector('.retry'), 'no Retry on saved replies');
-  assert.match(q.document.querySelector('.msg.notice').textContent, /^Earlier chat, continued/);
-  assert.strictEqual(q.$('agentName').textContent, 'demo-http-strands', "the chat's last agent is picked");
+  assert.strictEqual(q.document.querySelector('.msg.notice'), null, 'a recent chat gets no "may not remember" note');
+  assert.strictEqual(q.$('agentName').textContent, 'demo-http-strands', "the chat's agent is picked");
   assert.ok(q.sent.some((m) => m.action === 'resume_session' && m.sessionId === savedSession));
 
-  // Continue: same session id, and demo-a2a gets its old context back
-  q.type('@demo-a2a and now?');
+  // Continue under the same session id
+  q.type('and now?');
   await until(q.idle);
-  const continued = q.sent.filter((m) => m.action === 'invoke_agent').pop();
-  assert.strictEqual(continued.sessionId, savedSession);
-  assert.strictEqual(q.received.filter((m) => m.type === 'done').pop().meta.contextId, firstContext);
+  assert.strictEqual(q.sent.filter((m) => m.action === 'invoke_agent').pop().sessionId, savedSession);
 
   // Delete it, then the list is empty
   q.$('historyBtn').click();
@@ -1048,6 +1063,28 @@ test('history: chats are saved, listed, reopened after a restart and continued',
   q.$('historyView').querySelector('.history-item .icon-btn').click();
   await until(() => q.$('historyView').querySelector('.history-empty'));
   assert.strictEqual(q.$('historyView').querySelectorAll('.history-item').length, 0);
+});
+
+test('history: a chat last used more than 3 days ago gets the "may not remember" note', async (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcore-history-'));
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+  const fourDaysAgo = new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString();
+  const turn = { requestId: 'r', time: fourDaysAgo, agentArn: 'arn:x/old', agentName: 'old-agent', protocol: 'HTTP',
+    prompt: 'from last week', mentionLength: 0, reply: { segments: [{ kind: 'text', text: 'ok' }], state: 'completed', meta: {} } };
+  fs.writeFileSync(path.join(folder, 'old-session-0000000000000000000000000.json'), JSON.stringify(
+    { sessionId: 'old-session-0000000000000000000000000', title: 'from last week', created: fourDaysAgo, updated: fourDaysAgo, mock: true, turns: [turn] }));
+
+  const p = openPanel({ historyDir: folder });
+  t.after(p.close);
+  await p.ready();
+  p.$('historyBtn').click();
+  await until(() => p.$('historyView').querySelector('.history-open'));
+  p.$('historyView').querySelector('.history-open').click();
+  await until(() => p.document.querySelector('.msg.notice'));
+  assert.match(p.document.querySelector('.msg.notice').textContent, /^Earlier chat, continued/);
 });
 
 test('history: Clear all asks twice; saving can be turned off', { timeout: 30000 }, async (t) => {

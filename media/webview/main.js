@@ -41,7 +41,6 @@
   let lastPrompt = '';         // for ↑ in an empty composer
   const requests = new Map();  // requestId -> reply being written (see chat.createReply)
   let mentionBox;              // the @agent support (mentions.js), set up below
-  let pickerBox;               // the agent picker (picker.js), set up below
   let continuing = false;      // reopening a saved chat: an agent change must not start a new chat
 
   const profileSelect = $('profileSelect');
@@ -271,8 +270,6 @@
       ? 'Choosing agents by typing @ (click to use the picker instead)'
       : 'Choosing agents with the picker (click to choose by typing @ instead)';
     document.querySelector('.composer').classList.toggle('mode-mention', mention);
-    if (mention) $('agentBtn').title = 'Type @ to choose another agent';
-    else pickerBox?.sync();  // restores the agent's own tooltip
     updatePlaceholder();
     mentionBox.close();
     mentionBox.refresh();
@@ -282,16 +279,6 @@
     chooser = chooser === 'mention' ? 'picker' : 'mention';
     saveState();
     renderChooser();
-  }
-
-  // @ mode: the agent name starts an @ in the message box (opening the list)
-  function startMention() {
-    if (chooser !== 'mention') return;
-    const text = promptInput.value;
-    if (!text.startsWith('@')) promptInput.value = text ? `@ ${text}` : '@';
-    promptInput.focus();
-    promptInput.setSelectionRange(1, 1);
-    promptInput.dispatchEvent(new Event('input'));
   }
 
   function showMentionNote(text) {
@@ -529,7 +516,7 @@
     onChange: autoGrow,
     enabled: () => chooser === 'mention'
   });
-  pickerBox = app.picker.create({
+  app.picker.create({
     select: agentSelect,
     button: $('agentBtn'),
     label: $('agentName'),
@@ -539,7 +526,6 @@
     onRefresh: () => loadAgents(true),
     canOpen: () => chooser === 'picker'
   });
-  $('agentBtn').addEventListener('click', startMention);
   $('chooserBtn').addEventListener('click', toggleChooser);
 
   renderChooser();

@@ -442,7 +442,7 @@ User feedback: having both the picker and @ (Phase 12) is confusing; wants a tog
 - [x] **T15.3** Picker mode: exactly as before Phase 12 (switching agent starts a new chat).
 - [x] **T15.5** *(user, 2026-11-26)* The History button is disabled while a reply is coming in (opening a saved chat ended the current one mid-reply).
 - [x] **T15.6** *(user, 2026-11-26)* The "Earlier chat, continued..." note only for a reopened chat whose last message is more than 3 days old (`OLD_CHAT_MS`).
-- [ ] **T15.4** Tests (both modes, the button, new chat on a different @ agent, same agent continues, remembered mode, History disabled while replying, the 3-day note), README, CHANGELOG. *Committed before the tests were updated (user asked, after manual testing); the Phase 12 @ tests still expect the old behaviour.*
+- [x] **T15.4** Tests (both modes, the button, new chat on a different @ agent, same agent continues, remembered mode, History disabled while replying, the 3-day note), README, CHANGELOG. Also: the composer hint removed (user), and `npm run test:js` can no longer hang (`--test-timeout`, `--test-force-exit`, every test backend killed on exit): a failing test that skipped closing its panel had kept the run alive for 25 minutes.
 
 ## 5. Manual test checklist (mock mode)
 

@@ -75,7 +75,7 @@
    * @param {HTMLInputElement} parts.input     the search box
    * @param {HTMLElement} parts.list           the result list
    * @param {() => void} parts.onRefresh       reload the agent list
-   * @param {() => boolean} [parts.canOpen]     false in @ mode (the chip then starts an @ instead)
+   * @param {() => boolean} [parts.canOpen]     false in @ mode (the agent name is hidden then)
    */
   function create({ select, button, label, popup, input, list, onRefresh, canOpen = () => true }) {
     let shown = [];   // options matching the search

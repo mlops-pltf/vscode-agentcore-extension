@@ -6,7 +6,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 
 - **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents). With many agents, **search** the list by name or description.
 - **History.** Every chat is saved on your computer. Reopen one from **History** to read it again and keep going; A2A agents pick up their conversation where it left off.
-- **Ask another agent with @.** Start a message with `@agent-name` to send just that message to another agent, without leaving the chat. Each agent keeps its own conversation.
+- **Choose agents your way.** With the picker under the message box, or, with the **@** button on, by typing `@agent-name` at the start of a message (a different agent starts a new chat).
 - **HTTP and A2A.** A toggle under the message box switches protocol per agent; it starts on the detected one (marked with a dot) and remembers your choice.
 - **Tool calls you can follow, then the answer**: while the agent works, its tool calls appear as steps (running, then done or failed, expandable to input and result). When it's done, the work folds into one line ("Used 3 tools") and the final answer stands on its own.
 - **Streaming replies with Markdown**: headings, lists, tables, quotes, links and code blocks with a language label.
@@ -29,7 +29,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 2. Open the chat: click **AgentCore Chat** in the Secondary Side Bar on the right, or run **AgentCore: Open Chat** from the Command Palette.
 3. Pick your **AWS profile** at the top. If your SSO session has expired, click **Run aws sso login** in the banner.
 4. Pick an **agent**: click the agent name under the message box and type part of its name or description to search (↑/↓ and Enter work too). Type your question and press **Enter** (**Shift+Enter** for a new line).
-5. To ask a **different agent** one question, start the message with `@` and pick it from the list: `@billing-assistant, what changed last month?`. Only that message goes to it; the next message without `@` goes back to the agent in the picker. Agents don't see each other's replies.
+5. Prefer typing to picking? Click the **@** button next to the agent name. Then start a message with `@` and pick the agent from the list: `@billing-assistant, what changed last month?`. A different agent than the chat's starts a new chat; messages without `@` go to the chat's agent. Click **@** again to go back to the picker.
 
 ### Where the chat lives
 

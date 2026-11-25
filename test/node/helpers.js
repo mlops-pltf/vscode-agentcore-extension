@@ -149,10 +149,17 @@ function inlineScripts(html) {
     (_tag, file) => `<script>${fs.readFileSync(file, 'utf8')}</script>`);
 }
 
+// Every panel's Python backend, killed when the tests end even if a failing
+// test never got to close its panel (a live child keeps Node from exiting)
+const backends = new Set();
+process.on('exit', () => backends.forEach((proc) => proc.kill()));
+
 // historyDir: a folder for saved chats (Phase 14); without it, history is off
 function openPanel({ savedState, settings = MOCK_SETTINGS, historyDir } = {}) {
   const env = { ...process.env, AGENTCORE_HISTORY_DIR: historyDir || '' };
   const python = cp.spawn(PYTHON, ['-W', 'ignore', path.join(REPO, 'python', 'bridge.py')], { env });
+  backends.add(python);
+  python.on('exit', () => backends.delete(python));
   const received = [];  // every message the panel got from Python
   const sent = [];
   let state = savedState;
