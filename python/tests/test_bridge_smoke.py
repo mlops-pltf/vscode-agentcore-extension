@@ -120,6 +120,16 @@ class BridgeSmokeTest(unittest.TestCase):
         self.assertEqual(identity["region"], "eu-west-1")
         self.assertTrue(any(e["type"] == "log" and e["message"].startswith("Profile dev: mock-user") for e in events))
 
+    def test_two_agents_in_one_chat_keep_their_own_a2a_context(self):
+        sid = "m" * 36
+        first = dict(invoke("A1", "hi"), protocol="A2A", sessionId=sid, agentArn="arn:x:runtime/agent_a")
+        other = dict(invoke("B1", "hi"), protocol="A2A", sessionId=sid, agentArn="arn:x:runtime/agent_b")
+        again = dict(invoke("A2", "again"), protocol="A2A", sessionId=sid, agentArn="arn:x:runtime/agent_a")
+        events = self.run_bridge([first], [other], [again], pause=1.0)
+        context = {rid: self.for_request(events, rid)[-1]["meta"]["contextId"] for rid in ("A1", "B1", "A2")}
+        self.assertNotEqual(context["A1"], context["B1"], "agent b starts its own conversation")
+        self.assertEqual(context["A1"], context["A2"], "agent a continues where it was")
+
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)
         s = self.for_request(events, "S")

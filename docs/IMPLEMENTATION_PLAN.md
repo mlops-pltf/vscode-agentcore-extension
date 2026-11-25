@@ -369,6 +369,20 @@ User request: show the entire JSON reply converted to Markdown, not only its mes
 
 *Done when:* pushing `v0.9.0` produces a GitHub Release with an installable `.vsix`.
 
+### Phase 12: Ask another agent with @ (added 2026-11-25)
+
+User request: "call the agents from the chat box using @, like '@agent1, can you tell me ...'". *Decided (2026-11-25):* an `@agent` message goes **only to that agent**; the picker keeps its agent for messages without `@`; **one agent per message** (several `@`s, hand-offs between agents: later).
+
+- [x] **T12.1** Mention pop-up (`media/webview/mentions.js`): typing `@` at the **start** of the message opens the agent list above the composer, filtered by what follows (`@bil`); ↑/↓ move, Enter or Tab insert `@name `, Esc closes it (without stopping a reply), a click picks. Rows are the agent picker's (shared from `picker.js`).
+- [x] **T12.2** The mention is highlighted in the message box (a mirror layer behind the transparent textarea) and in the sent message's bubble.
+- [x] **T12.3** Sending: a message starting with `@name` (optionally followed by `,` or `:`) goes to that agent with its own protocol (override, else detected, else HTTP); the agent receives the text **without** the mention; the reply shows that agent's name. Unknown `@name` or nothing after it: a notice, nothing sent. Retry resends to the same agent. The hint reads "@ agent · ⏎ send · ⇧⏎ new line".
+- [x] **T12.4** Python: conversation state per **agent within a chat** (`sessions` keyed by session id + agent ARN), so agent1's A2A context or pending question isn't sent to agent2; New chat clears all of them (stopping each runtime session already works per agent).
+- [x] **T12.5** Tests (Python session keying, panel: pop-up, keyboard, insertion, sending, unknown names, per-agent protocol, Retry), README and CHANGELOG.
+
+*Known limit:* agents don't see each other's replies; "@agent2, summarise that" doesn't know what "that" is.
+
+*Done 2026-11-25 (mock, user-tested).* *Done when:* with the mock, `@demo-http-strands hi` from a demo-a2a chat is answered by the HTTP agent over HTTP, the next plain message goes back to demo-a2a with its A2A context intact, and the pop-up works by keyboard and mouse.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

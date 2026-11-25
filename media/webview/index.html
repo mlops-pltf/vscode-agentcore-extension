@@ -1,6 +1,6 @@
 <!--
   AgentCore Chat panel markup. extension.js (_getHtml) fills in the placeholders
-  written in double braces: cspSource, nonce, mainCss/domJs/markdownJs/chatJs/pickerJs/mainJs (webview URIs),
+  written in double braces: cspSource, nonce, mainCss/domJs/markdownJs/chatJs/pickerJs/mentionsJs/mainJs (webview URIs),
   and init (starting values as JSON).
 -->
 <!DOCTYPE html>
@@ -50,7 +50,17 @@
              role="combobox" aria-controls="agentList" aria-expanded="true" autocomplete="off" spellcheck="false">
       <ul id="agentList" role="listbox" aria-label="Agents"></ul>
     </div>
-    <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
+    <!-- "@agent" list (mentions.js), opened by typing @ at the start of the message -->
+    <div id="mentionPopup" class="picker mentions" hidden>
+      <div class="picker-head">Ask another agent</div>
+      <ul id="mentionList" role="listbox" aria-label="Agents"></ul>
+    </div>
+    <div id="mentionNote" class="note warn" role="status" hidden></div>
+    <!-- The mirror sits behind the transparent textarea to highlight an @mention -->
+    <div class="input-wrap">
+      <div id="promptMirror" class="mirror" aria-hidden="true"></div>
+      <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
+    </div>
     <div class="composer-footer">
       <div class="agent-chip">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7.5" width="15" height="10" rx="3"/><path d="M12 4.5v3"/><path d="M9.5 12.5h.01M14.5 12.5h.01" stroke-width="2.6"/></svg>
@@ -63,7 +73,7 @@
         <button data-protocol="A2A" aria-pressed="false">A2A</button>
       </div>
       <span class="grow"></span>
-      <span class="hint">⏎ send · ⇧⏎ new line</span>
+      <span class="hint">@ agent · ⏎ send · ⇧⏎ new line</span>
       <!-- One action spot: arrow to send, square to stop (main.js shows one at a time) -->
       <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -80,6 +90,7 @@
   <script nonce="{{nonce}}" src="{{markdownJs}}"></script>
   <script nonce="{{nonce}}" src="{{chatJs}}"></script>
   <script nonce="{{nonce}}" src="{{pickerJs}}"></script>
+  <script nonce="{{nonce}}" src="{{mentionsJs}}"></script>
   <script nonce="{{nonce}}" src="{{mainJs}}"></script>
 </body>
 </html>

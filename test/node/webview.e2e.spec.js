@@ -724,3 +724,146 @@ test('JSON replies: text and raw modes', async (t) => {
   assert.strictEqual(block.querySelector('.lang').textContent, 'json');
   assert.ok(block.querySelector('code').textContent.includes('"usage"'), 'raw shows everything');
 });
+
+// Types into the message box as a user would: text, caret at the end, input event
+function typeInBox(p, text) {
+  const box = p.$('promptInput');
+  box.value = text;
+  box.setSelectionRange(text.length, text.length);
+  box.dispatchEvent(new p.window.Event('input'));
+}
+
+function keyInBox(p, key) {
+  const event = new p.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  p.$('promptInput').dispatchEvent(event);
+  return event;
+}
+
+test('@ pop-up: opens at the start, filters, inserts by keyboard or mouse, highlights', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const names = () => [...$('mentionList').querySelectorAll('.agent-option .name')].map((n) => n.textContent);
+
+  typeInBox(p, '@');
+  assert.strictEqual($('mentionPopup').hidden, false);
+  assert.deepStrictEqual(names(), ['demo-a2a', 'demo-http-strands', 'demo-unknown']);
+  typeInBox(p, '@HTTP');
+  assert.deepStrictEqual(names(), ['demo-http-strands']);
+  assert.strictEqual($('mentionList').querySelector('mark').textContent, 'http');
+
+  // Enter inserts the name (and does not send)
+  assert.ok(keyInBox(p, 'Enter').defaultPrevented);
+  assert.strictEqual($('promptInput').value, '@demo-http-strands ');
+  assert.strictEqual($('mentionPopup').hidden, true);
+  assert.ok(!p.sent.some((m) => m.action === 'invoke_agent'));
+  assert.strictEqual($('promptMirror').querySelector('.mention').textContent, '@demo-http-strands');
+
+  // ↓ wraps, Tab inserts, text after the caret is kept
+  $('promptInput').value = '@demo what is up';
+  $('promptInput').setSelectionRange(5, 5);
+  $('promptInput').dispatchEvent(new p.window.Event('input'));
+  keyInBox(p, 'ArrowUp');
+  keyInBox(p, 'Tab');
+  assert.strictEqual($('promptInput').value, '@demo-unknown what is up');
+
+  // A click picks; Esc only closes the list
+  typeInBox(p, '@demo-a');
+  $('mentionList').querySelector('.agent-option').click();
+  assert.strictEqual($('promptInput').value, '@demo-a2a ');
+  typeInBox(p, '@');
+  const esc = keyInBox(p, 'Escape');
+  assert.ok(esc.defaultPrevented);
+  assert.strictEqual($('mentionPopup').hidden, true);
+
+  // Only at the very start; unknown names aren't highlighted
+  typeInBox(p, 'hi @');
+  assert.strictEqual($('mentionPopup').hidden, true);
+  typeInBox(p, '@zzz');
+  assert.strictEqual($('mentionPopup').hidden, true, 'no match: no list');
+  assert.strictEqual($('promptMirror').querySelector('.mention'), null);
+
+  // Esc in the list while a reply streams closes the list, not the reply
+  p.pick('demo-http-strands');
+  p.type('slow');
+  typeInBox(p, '@');
+  keyInBox(p, 'Escape');
+  assert.strictEqual($('mentionPopup').hidden, true);
+  assert.ok(!p.sent.some((m) => m.action === 'cancel'));
+  $('stopBtn').click();
+  await until(p.idle);
+});
+
+test('@agent sends to that agent only, with its own protocol; the picker keeps its agent', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+  const invokes = () => p.sent.filter((m) => m.action === 'invoke_agent');
+  const a2aArn = $('agentSelect').value;
+
+  p.type('hi');  // demo-a2a, A2A
+  await until(p.idle);
+  p.type('@demo-http-strands, how are you?');
+  const toHttp = invokes().pop();
+  assert.strictEqual(toHttp.prompt, 'how are you?', 'sent without the mention');
+  assert.strictEqual(toHttp.protocol, 'HTTP');
+  assert.notStrictEqual(toHttp.agentArn, a2aArn);
+  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-http-strands');
+  const bubble = [...p.document.querySelectorAll('.msg.user')].pop();
+  assert.strictEqual(bubble.querySelector('.mention').textContent, '@demo-http-strands');
+  assert.strictEqual(bubble.textContent, '@demo-http-strands, how are you?');
+  await until(p.idle);
+  assert.match(p.part(p.last(), 'footer').textContent, /^HTTP · /);
+  assert.ok(p.part(p.last(), 'text').textContent.startsWith("You said: 'how are you?'"));
+
+  // Same chat, the picker's agent again
+  assert.strictEqual($('agentSelect').value, a2aArn);
+  assert.strictEqual(p.bubbles().length, 2, 'no new chat');
+  assert.ok(!p.sent.some((m) => m.action === 'reset_session'));
+  p.type('and you?');
+  const back = invokes().pop();
+  assert.strictEqual(back.agentArn, a2aArn);
+  assert.strictEqual(back.protocol, 'A2A');
+  assert.strictEqual(back.sessionId, toHttp.sessionId);
+  await until(p.idle);
+  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-a2a');
+
+  // An agent's chosen protocol is used for @ too
+  p.pick('demo-unknown');
+  p.toggle('A2A');
+  p.pick('demo-a2a');
+  p.type('@demo-unknown hi');
+  assert.strictEqual(invokes().pop().protocol, 'A2A');
+  await until(p.idle);
+
+  // Retry goes to the mentioned agent
+  p.type('@demo-http-strands error please');
+  await until(p.idle);
+  p.last().querySelector('.retry').click();
+  const retried = invokes().pop();
+  assert.strictEqual(retried.prompt, 'error please');
+  assert.strictEqual(retried.protocol, 'HTTP');
+  assert.strictEqual(p.part(p.last(), 'name').textContent, 'demo-http-strands');
+  await until(p.idle);
+});
+
+test('@ with an unknown agent or no question: a note, nothing sent', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  const { $ } = p;
+
+  typeInBox(p, '@nobody hi');
+  keyInBox(p, 'Enter');
+  assert.strictEqual($('mentionNote').hidden, false);
+  assert.strictEqual($('mentionNote').textContent, 'No agent called @nobody. Type @ to pick one.');
+  assert.strictEqual($('promptInput').value, '@nobody hi', 'kept for fixing');
+  typeInBox(p, '@demo-a2a');
+  assert.strictEqual($('mentionNote').hidden, true, 'typing hides the note');
+  $('mentionPopup').hidden = true;
+  keyInBox(p, 'Enter');
+  assert.strictEqual($('mentionNote').textContent, 'Add your question after @demo-a2a.');
+  assert.ok(!p.sent.some((m) => m.action === 'invoke_agent'));
+});

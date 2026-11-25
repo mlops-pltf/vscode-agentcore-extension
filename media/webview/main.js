@@ -34,6 +34,7 @@
   let turns = 0;               // prompts sent in the current session
   let lastPrompt = '';         // for ↑ in an empty composer
   const requests = new Map();  // requestId -> reply being written (see chat.createReply)
+  let mentionBox;              // the @agent support (mentions.js), set up below
 
   const profileSelect = $('profileSelect');
   const agentSelect = $('agentSelect');
@@ -46,10 +47,12 @@
 
   const currentAgent = () => agents.get(currentAgentArn);
 
-  // The textarea grows with its content up to the CSS max-height, then scrolls
+  // The textarea grows with its content up to the CSS max-height, then scrolls;
+  // the @mention highlight follows the text
   function autoGrow() {
     promptInput.style.height = 'auto';
     promptInput.style.height = promptInput.scrollHeight + 'px';
+    mentionBox?.refresh();
   }
 
   // The current agent's Agent Card summary (A2A only), if Python found one
@@ -196,16 +199,39 @@
     stopBtn.hidden = !busy;
   }
 
-  function sendMessage() {
-    const prompt = promptInput.value.trim();
-    const agentArn = agentSelect.value;
-    if (requests.size > 0 || !prompt || !agentArn) return;
+  // The protocol to use with an agent: the one chosen with the toggle, else the detected one
+  function protocolFor(arn) {
+    if (arn === currentAgentArn) return protocol;
+    const agent = agents.get(arn);
+    return protocolOverrides[arn] || (agent && agent.protocol) || 'HTTP';
+  }
 
-    chatView.appendMessage(chat, prompt, 'user');
-    lastPrompt = prompt;
+  function showMentionNote(text) {
+    $('mentionNote').textContent = text;
+    $('mentionNote').hidden = false;
+  }
+
+  function sendMessage() {
+    const text = promptInput.value.trim();
+    if (requests.size > 0 || !text) return;
+    // "@agent ..." goes to that agent only; the picker keeps its agent (Phase 12)
+    const mention = mentionBox.resolve(text);
+    let agentArn = agentSelect.value;
+    let prompt = text;
+    if (mention) {
+      if (!mention.option) return showMentionNote(`No agent called @${mention.name}. Type @ to pick one.`);
+      if (!mention.rest) return showMentionNote(`Add your question after @${mention.option.textContent}.`);
+      agentArn = mention.option.value;
+      prompt = mention.rest;
+    }
+    if (!agentArn) return;
+
+    chatView.appendMessage(chat, text, 'user', mention ? mention.length : 0);
+    lastPrompt = text;
     promptInput.value = '';
     autoGrow();
-    invoke({ prompt, agentArn, protocol });
+    const agent = agents.get(agentArn);
+    invoke({ prompt, agentArn, protocol: protocolFor(agentArn), agentName: agent ? agent.name : 'Agent' });
   }
 
   // Ask the agent; `replace` is a failed reply to put the new one in place of (Retry)
@@ -213,7 +239,7 @@
     // Only the latest failed reply can be retried
     for (const button of chat.querySelectorAll('.retry')) button.remove();
     const requestId = newId();
-    const reply = chatView.createReply(chat, currentAgent() ? currentAgent().name : 'Agent');
+    const reply = chatView.createReply(chat, request.agentName);
     if (replace) replace.bubble.replaceWith(reply.bubble);
     reply.request = request;
     requests.set(requestId, reply);
@@ -366,8 +392,12 @@
   $('bridgeLogsBtn').addEventListener('click', () => vscode.postMessage({ type: 'showLogs' }));
   sendBtn.addEventListener('click', sendMessage);
   stopBtn.addEventListener('click', stopAll);
-  promptInput.addEventListener('input', autoGrow);
+  promptInput.addEventListener('input', () => {
+    autoGrow();
+    $('mentionNote').hidden = true;
+  });
   promptInput.addEventListener('keydown', (e) => {
+    if (mentionBox.handleKey(e)) return;  // the @ list is open
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -387,6 +417,14 @@
     }
   });
   chatView.initScroll(chat, $('jumpBtn'));
+  mentionBox = app.mentions.create({
+    input: promptInput,
+    mirror: $('promptMirror'),
+    popup: $('mentionPopup'),
+    list: $('mentionList'),
+    select: agentSelect,
+    onChange: autoGrow
+  });
   app.picker.create({
     select: agentSelect,
     button: $('agentBtn'),

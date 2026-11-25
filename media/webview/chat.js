@@ -64,9 +64,13 @@
     if (scroll.button) scroll.button.hidden = scroll.follow;
   }
 
-  function appendMessage(container, text, cls) {
+  // mentionLength: the first characters are an "@agent" mention, shown highlighted
+  function appendMessage(container, text, cls, mentionLength = 0) {
     container.querySelector('.empty')?.remove();
-    const div = el('div', 'msg ' + cls, text);
+    const div = el('div', 'msg ' + cls, mentionLength ? undefined : text);
+    if (mentionLength) {
+      div.append(el('span', 'mention', text.slice(0, mentionLength)), document.createTextNode(text.slice(mentionLength)));
+    }
     container.appendChild(div);
     scrollToBottom(container, cls === 'user');
     return div;

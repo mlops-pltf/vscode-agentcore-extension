@@ -50,6 +50,17 @@ class SessionUseTest(unittest.TestCase):
         self.assertEqual(sessions.reset("t1"), [], "nothing left to stop")
         sessions.reset("never-used")
 
+    def test_state_is_per_agent_within_a_chat(self):
+        sessions.get("t2", "arn:a")["contextId"] = "ctx-a"
+        self.assertEqual(sessions.get("t2", "arn:b"), {}, "agent b doesn't get agent a's context")
+        sessions.get("t2", "arn:b")["contextId"] = "ctx-b"
+        sessions.get("t3", "arn:a")["contextId"] = "other chat"
+        sessions.reset("t2")
+        self.assertEqual(sessions.get("t2", "arn:a"), {})
+        self.assertEqual(sessions.get("t2", "arn:b"), {})
+        self.assertEqual(sessions.get("t3", "arn:a"), {"contextId": "other chat"}, "other chats untouched")
+        sessions.reset("t3")
+
 
 def stub_client(test, service):
     client = boto3.client(service, region_name="eu-central-1", aws_access_key_id="x", aws_secret_access_key="y")

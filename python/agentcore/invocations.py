@@ -63,7 +63,7 @@ def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
         profile = cmd["profile"]
         session_id = cmd.get("sessionId") or str(uuid.uuid4())
         ctx = InvokeContext(request_id=request_id, prompt=cmd["prompt"], session_id=session_id,
-                            settings=settings, session_state=sessions.get(session_id),
+                            settings=settings, session_state=sessions.get(session_id, cmd["agentArn"]),
                             profile=profile, agent_arn=cmd["agentArn"])
 
         region = settings.get("region") or None

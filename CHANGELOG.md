@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **@agent**: start a message with `@agent-name` (type `@` for a searchable list) to send it to that agent only, in the same chat; each agent keeps its own conversation (A2A context per agent).
+
 ## [0.9.0] - 2026-11-21
 
 First beta, for internal testing against real AgentCore agents before 1.0.0.

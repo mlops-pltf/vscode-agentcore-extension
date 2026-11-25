@@ -18,6 +18,30 @@
     return fragment;
   }
 
+  // One agent row (name, protocol, description; matches highlighted). Also used
+  // by the "@" pop-up (mentions.js).
+  function agentRow(option, index, query, { onChoose, onHover, idPrefix = 'agent-option' }) {
+    const item = el('li', 'agent-option' + (option.selected ? ' current' : ''));
+    item.id = `${idPrefix}-${index}`;
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(option.selected));
+    const top = el('div', 'top');
+    const name = el('span', 'name');
+    name.appendChild(highlighted(option.textContent, query));
+    top.append(name, el('span', 'proto', option.dataset.protocol || '?'));
+    item.appendChild(top);
+    if (option.title) {
+      const description = el('div', 'desc');
+      description.appendChild(highlighted(option.title, query));
+      item.appendChild(description);
+    }
+    // mousedown would move focus out of the text box and close the list
+    item.addEventListener('mousedown', (event) => event.preventDefault());
+    item.addEventListener('click', () => onChoose(option));
+    item.addEventListener('mousemove', () => onHover(index));
+    return item;
+  }
+
   /**
    * @param {object} parts
    * @param {HTMLSelectElement} parts.select   the hidden agent <select>
@@ -81,34 +105,15 @@
       }
     }
 
-    function row(option, index, query) {
-      const item = el('li', 'agent-option' + (option.selected ? ' current' : ''));
-      item.id = `agent-option-${index}`;
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', String(option.selected));
-      const top = el('div', 'top');
-      const name = el('span', 'name');
-      name.appendChild(highlighted(option.textContent, query));
-      top.append(name, el('span', 'proto', option.dataset.protocol || '?'));
-      item.appendChild(top);
-      if (option.title) {
-        const description = el('div', 'desc');
-        description.appendChild(highlighted(option.title, query));
-        item.appendChild(description);
-      }
-      // mousedown would move focus out of the search box and close the picker
-      item.addEventListener('mousedown', (event) => event.preventDefault());
-      item.addEventListener('click', () => choose(option));
-      item.addEventListener('mousemove', () => { if (active !== index) setActive(index); });
-      return item;
-    }
-
     function render() {
       const query = input.value.trim().toLowerCase();
       shown = agentOptions().filter((option) => !query
         || option.textContent.toLowerCase().includes(query)
         || (option.title || '').toLowerCase().includes(query));
-      list.replaceChildren(...shown.map((option, i) => row(option, i, query)));
+      list.replaceChildren(...shown.map((option, i) => agentRow(option, i, query, {
+        onChoose: choose,
+        onHover: (index) => { if (active !== index) setActive(index); }
+      })));
       if (!shown.length) {
         const none = el('li', 'none', 'No agents match. ');
         const refresh = el('button', 'link', 'Refresh agents');
@@ -149,5 +154,5 @@
     return { open, close, sync };
   }
 
-  app.picker = { create };
+  app.picker = { create, agentRow };
 })(window.AgentCore);
