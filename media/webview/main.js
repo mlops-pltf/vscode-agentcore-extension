@@ -19,6 +19,12 @@
   // Protocols the user picked with the toggle, per agent ARN; kept across reloads
   const savedState = vscode.getState() || {};
   const protocolOverrides = savedState.protocolOverrides || {};
+  // How agents are chosen (Phase 15): 'picker', or 'mention' (by typing @); kept across reloads
+  let chooser = savedState.chooser === 'mention' ? 'mention' : 'picker';
+
+  function saveState() {
+    vscode.setState({ ...savedState, protocolOverrides, chooser });
+  }
 
   // Shown on the welcome card when the agent has no Agent Card with examples
   const SUGGESTIONS = [
@@ -35,6 +41,7 @@
   let lastPrompt = '';         // for ↑ in an empty composer
   const requests = new Map();  // requestId -> reply being written (see chat.createReply)
   let mentionBox;              // the @agent support (mentions.js), set up below
+  let pickerBox;               // the agent picker (picker.js), set up below
   let continuing = false;      // reopening a saved chat: an agent change must not start a new chat
 
   const profileSelect = $('profileSelect');
@@ -141,7 +148,7 @@
     protocol = protocolOverrides[arn] || (agent && agent.protocol) || 'HTTP';
     renderProtocol();
     requestCard();
-    promptInput.placeholder = agent ? `Ask ${agent.name}...` : 'Select an agent to start...';
+    updatePlaceholder();
     if (turns === 0) showWelcome();
   }
 
@@ -184,7 +191,7 @@
     } else {
       protocolOverrides[currentAgentArn] = next;
     }
-    vscode.setState({ ...savedState, protocolOverrides });
+    saveState();
     renderProtocol();
     requestCard();
     if (turns === 0) showWelcome();
@@ -204,6 +211,9 @@
 
   // ---------- chat history (Phase 14; the view is history.js) ----------
 
+  // A reopened chat whose last message is older than this gets a "may not remember" note
+  const OLD_CHAT_MS = 3 * 24 * 60 * 60 * 1000;
+
   // Reopen a saved chat and continue it under its session id
   function continueChat(saved) {
     stopAll();
@@ -213,9 +223,13 @@
     $('switchNotice').hidden = true;
     chat.replaceChildren();
     historyView.showTurns(chat, saved.turns);
-    chatView.appendMessage(chat, `Earlier chat, continued. The agent may not remember it if its session has ended.`, 'notice');
     // The chat's last agent in the picker, without starting a new chat
     const last = saved.turns[saved.turns.length - 1];
+    // Only for an old chat: by then the agent's session has surely ended
+    const lastTime = Date.parse(last && last.time);
+    if (!isNaN(lastTime) && Date.now() - lastTime > OLD_CHAT_MS) {
+      chatView.appendMessage(chat, 'Earlier chat, continued. The agent may not remember it if its session has ended.', 'notice');
+    }
     if (last && agents.has(last.agentArn) && last.agentArn !== currentAgentArn) {
       continuing = true;
       agentSelect.value = last.agentArn;
@@ -233,13 +247,52 @@
     sendBtn.hidden = busy;
     stopBtn.disabled = !busy;
     stopBtn.hidden = !busy;
+    // Opening History (and a chat from it) would end the chat a reply is still coming into
+    const historyBtn = $('historyBtn');
+    historyBtn.disabled = busy;
+    historyBtn.title = busy ? 'History (available when the reply is done)' : 'History';
   }
 
-  // The protocol to use with an agent: the one chosen with the toggle, else the detected one
-  function protocolFor(arn) {
-    if (arn === currentAgentArn) return protocol;
-    const agent = agents.get(arn);
-    return protocolOverrides[arn] || (agent && agent.protocol) || 'HTTP';
+  // ---------- choosing agents: picker or @ (Phase 15) ----------
+
+  function updatePlaceholder() {
+    const agent = currentAgent();
+    if (chooser === 'mention') {
+      promptInput.placeholder = agent ? `Ask ${agent.name}, or type @ for another agent...` : 'Type @ to choose an agent...';
+    } else {
+      promptInput.placeholder = agent ? `Ask ${agent.name}...` : 'Select an agent to start...';
+    }
+  }
+
+  function renderChooser() {
+    const mention = chooser === 'mention';
+    $('chooserBtn').setAttribute('aria-pressed', String(mention));
+    $('chooserBtn').title = mention
+      ? 'Choosing agents by typing @ (click to use the picker instead)'
+      : 'Choosing agents with the picker (click to choose by typing @ instead)';
+    document.querySelector('.composer').classList.toggle('mode-mention', mention);
+    $('composerHint').textContent = mention ? '@ agent · ⏎ send · ⇧⏎ new line' : '⏎ send · ⇧⏎ new line';
+    if (mention) $('agentBtn').title = 'Type @ to choose another agent';
+    else pickerBox?.sync();  // restores the agent's own tooltip
+    updatePlaceholder();
+    mentionBox.close();
+    mentionBox.refresh();
+  }
+
+  function toggleChooser() {
+    chooser = chooser === 'mention' ? 'picker' : 'mention';
+    saveState();
+    renderChooser();
+  }
+
+  // @ mode: the agent name starts an @ in the message box (opening the list)
+  function startMention() {
+    if (chooser !== 'mention') return;
+    const text = promptInput.value;
+    if (!text.startsWith('@')) promptInput.value = text ? `@ ${text}` : '@';
+    promptInput.focus();
+    promptInput.setSelectionRange(1, 1);
+    promptInput.dispatchEvent(new Event('input'));
   }
 
   function showMentionNote(text) {
@@ -250,25 +303,28 @@
   function sendMessage() {
     const text = promptInput.value.trim();
     if (requests.size > 0 || !text) return;
-    // "@agent ..." goes to that agent only; the picker keeps its agent (Phase 12)
+    // @ mode: "@agent ..." talks to that agent. A chat is with one agent, so a
+    // different agent than this chat's starts a new chat (onAgentChanged does that).
     const mention = mentionBox.resolve(text);
-    let agentArn = agentSelect.value;
     let prompt = text;
     if (mention) {
       if (!mention.option) return showMentionNote(`No agent called @${mention.name}. Type @ to pick one.`);
       if (!mention.rest) return showMentionNote(`Add your question after @${mention.option.textContent}.`);
-      agentArn = mention.option.value;
+      if (mention.option.value !== currentAgentArn) {
+        agentSelect.value = mention.option.value;
+        agentSelect.dispatchEvent(new Event('change'));
+      }
       prompt = mention.rest;
     }
-    if (!agentArn) return;
+    const agent = currentAgent();
+    if (!agent) return chooser === 'mention' ? showMentionNote('Type @ to choose an agent first.') : undefined;
 
     chatView.appendMessage(chat, text, 'user', mention ? mention.length : 0);
     lastPrompt = text;
     promptInput.value = '';
     autoGrow();
-    const agent = agents.get(agentArn);
     invoke({
-      prompt, agentArn, protocol: protocolFor(agentArn), agentName: agent ? agent.name : 'Agent',
+      prompt, agentArn: agent.arn, protocol, agentName: agent.name,
       display: text, mentionLength: mention ? mention.length : 0
     });
   }
@@ -471,18 +527,23 @@
     popup: $('mentionPopup'),
     list: $('mentionList'),
     select: agentSelect,
-    onChange: autoGrow
+    onChange: autoGrow,
+    enabled: () => chooser === 'mention'
   });
-  app.picker.create({
+  pickerBox = app.picker.create({
     select: agentSelect,
     button: $('agentBtn'),
     label: $('agentName'),
     popup: $('agentPicker'),
     input: $('agentSearch'),
     list: $('agentList'),
-    onRefresh: () => loadAgents(true)
+    onRefresh: () => loadAgents(true),
+    canOpen: () => chooser === 'picker'
   });
+  $('agentBtn').addEventListener('click', startMention);
+  $('chooserBtn').addEventListener('click', toggleChooser);
 
+  renderChooser();
   showSettings();
   updateBusy();
   showWelcome();

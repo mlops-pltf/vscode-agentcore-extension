@@ -67,6 +67,8 @@
       <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
     </div>
     <div class="composer-footer">
+      <!-- Choose agents with the picker (off) or by typing @ (on); main.js, Phase 15 -->
+      <button id="chooserBtn" class="chooser" aria-pressed="false" aria-label="Choose agents by typing @">@</button>
       <div class="agent-chip">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7.5" width="15" height="10" rx="3"/><path d="M12 4.5v3"/><path d="M9.5 12.5h.01M14.5 12.5h.01" stroke-width="2.6"/></svg>
         <!-- The select holds the agents and the choice; picker.js shows it as a searchable list -->
@@ -78,7 +80,7 @@
         <button data-protocol="A2A" aria-pressed="false">A2A</button>
       </div>
       <span class="grow"></span>
-      <span class="hint">@ agent · ⏎ send · ⇧⏎ new line</span>
+      <span id="composerHint" class="hint">⏎ send · ⇧⏎ new line</span>
       <!-- One action spot: arrow to send, square to stop (main.js shows one at a time) -->
       <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>

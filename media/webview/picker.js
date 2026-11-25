@@ -75,8 +75,9 @@
    * @param {HTMLInputElement} parts.input     the search box
    * @param {HTMLElement} parts.list           the result list
    * @param {() => void} parts.onRefresh       reload the agent list
+   * @param {() => boolean} [parts.canOpen]     false in @ mode (the chip then starts an @ instead)
    */
-  function create({ select, button, label, popup, input, list, onRefresh }) {
+  function create({ select, button, label, popup, input, list, onRefresh, canOpen = () => true }) {
     let shown = [];   // options matching the search
     const cursor = rowCursor(list, (row) => input.setAttribute('aria-activedescendant', row.id));
 
@@ -93,7 +94,7 @@
     }
 
     function open() {
-      if (button.disabled) return;
+      if (button.disabled || !canOpen()) return;
       popup.hidden = false;
       button.setAttribute('aria-expanded', 'true');
       input.value = '';

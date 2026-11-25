@@ -395,6 +395,28 @@ details[open] > summary.tool-head::after { content: "\2304"; }
 .composer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
 .agent-chip { display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; flex: 0 1 auto; padding-left: 4px; color: var(--muted); }
 .agent-chip svg { flex-shrink: 0; }
+/* The @ toggle (Phase 15): off = picker, on = choose agents by typing @ */
+.chooser {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.chooser[aria-pressed="false"] { opacity: 0.55; }   /* picker mode: the @ button is muted */
+.chooser:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+/* @ mode: the @ button is highlighted, and the picker is not shown at all */
+.chooser[aria-pressed="true"] {
+  border-color: var(--vscode-button-background);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+.chooser[aria-pressed="true"]:hover { background: var(--vscode-button-hoverBackground); }
+.mode-mention .agent-chip { display: none; }
+
 .agent-btn {
   position: relative;
   display: inline-flex;

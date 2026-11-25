@@ -433,6 +433,17 @@ User request: raise the URL timeout to 10 minutes. There was no timeout in our c
 
 *Unit-tested; to check at the office with an agent that takes over a minute.*
 
+### Phase 15: Choose agents with the picker or with @ (added 2026-11-26)
+
+User feedback: having both the picker and @ (Phase 12) is confusing; wants a toggle in the panel (if it keeps the look minimal), and expects choosing a different agent with @ to start a new chat. *Decided (2026-11-26):* one way at a time, switched with a small **@ button** in the composer; each chat is with one agent in both modes. Replaces Phase 12's "one message to another agent, same chat".
+
+- [x] **T15.1** The @ button (next to the agent name, `aria-pressed`): off = **picker** (default; button muted; `@` is plain text, no pop-up, no highlight), on = **@ mode** (button highlighted). One switch for the whole panel: new chats, History and reloads keep it (webview state).
+- [x] **T15.2** @ mode: the picker is **not shown** (user, 2026-11-26); the placeholder says which agent the chat is with ("Ask demo-a2a, or type @ for another agent..."). A message starting with `@agent` goes to that agent; if it's a **different agent than the chat's, a new chat starts** with that message as its first; the same agent just continues. Messages without @ go to the chat's agent. Placeholder and hint mention @.
+- [x] **T15.3** Picker mode: exactly as before Phase 12 (switching agent starts a new chat).
+- [x] **T15.5** *(user, 2026-11-26)* The History button is disabled while a reply is coming in (opening a saved chat ended the current one mid-reply).
+- [x] **T15.6** *(user, 2026-11-26)* The "Earlier chat, continued..." note only for a reopened chat whose last message is more than 3 days old (`OLD_CHAT_MS`).
+- [ ] **T15.4** Tests (both modes, the button, new chat on a different @ agent, same agent continues, remembered mode, History disabled while replying, the 3-day note), README, CHANGELOG. *Committed before the tests were updated (user asked, after manual testing); the Phase 12 @ tests still expect the old behaviour.*
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

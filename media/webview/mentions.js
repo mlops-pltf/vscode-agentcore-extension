@@ -1,7 +1,8 @@
-// "@agent" in the message box (Phase 12). A message that starts with @name goes
-// to that agent instead of the one in the picker. Typing "@" at the start opens
-// the agent list (rows shared with picker.js); the mention is highlighted by a
-// mirror layer behind the textarea (a textarea can't style part of its text).
+// "@agent" in the message box (Phases 12, 15). In @ mode, a message that starts
+// with @name talks to that agent (main.js decides what that means for the chat).
+// Typing "@" at the start opens the agent list (rows shared with picker.js); the
+// mention is highlighted by a mirror layer behind the textarea (a textarea can't
+// style part of its text). In picker mode all of this is off: "@" is plain text.
 (function (app) {
   const { el } = app.dom;
 
@@ -18,8 +19,9 @@
    * @param {HTMLElement} parts.list            the list
    * @param {HTMLSelectElement} parts.select    the agents (the picker's hidden select)
    * @param {() => void} parts.onChange         the text changed (main.js resizes the box)
+   * @param {() => boolean} parts.enabled        whether @ mode is on
    */
-  function create({ input, mirror, popup, list, select, onChange }) {
+  function create({ input, mirror, popup, list, select, onChange, enabled }) {
     let shown = [];
     const cursor = app.picker.rowCursor(list);
 
@@ -29,6 +31,7 @@
     // The agent a message is addressed to: null if it doesn't start with "@";
     // otherwise {name, option (undefined if no such agent), rest (the message without it), length}
     function resolve(text) {
+      if (!enabled()) return null;
       const match = LEADING.exec(text);
       if (!match) return null;
       return { name: match[1], option: byName(match[1]), rest: text.slice(match[0].length).trim(), length: 1 + match[1].length };
@@ -37,7 +40,7 @@
     // Highlight a known "@name" at the start; the rest of the mirror is invisible
     function refresh() {
       const text = input.value;
-      const match = LEADING.exec(text);
+      const match = enabled() ? LEADING.exec(text) : null;
       const length = match && byName(match[1]) ? 1 + match[1].length : 0;
       mirror.replaceChildren();
       if (length) mirror.appendChild(el('span', 'mention', text.slice(0, length)));
@@ -57,7 +60,7 @@
     }
 
     function update() {
-      const query = typedQuery();
+      const query = enabled() ? typedQuery() : null;
       if (query === null || !agentOptions().length) {
         close();
         return;
