@@ -75,6 +75,41 @@ class RegionTest(unittest.TestCase):
                           {"profile_name": "rp", "region_name": "eu-west-1"}])
 
 
+class ClientConfigTest(unittest.TestCase):
+    def test_agent_calls_wait_ten_minutes_for_a_reply(self):
+        with mock.patch.object(aws.boto3, "Session") as session:
+            aws._client("cfg", "bedrock-agentcore")
+            aws._client("cfg", "sts")
+        self.addCleanup(lambda: [aws._clients.pop(k) for k in list(aws._clients) if k[0] == "cfg"])
+        agentcore_call, sts_call = session.return_value.client.call_args_list
+        self.assertEqual(agentcore_call.args, ("bedrock-agentcore",))
+        self.assertEqual(agentcore_call.kwargs["config"].read_timeout, 600)
+        self.assertEqual(sts_call, mock.call("sts"), "other services keep boto3's defaults")
+
+    def test_a_real_client_gets_the_timeout(self):
+        client = boto3.Session(region_name="eu-central-1", aws_access_key_id="x", aws_secret_access_key="y").client(
+            "bedrock-agentcore", config=aws._CLIENT_CONFIG["bedrock-agentcore"])
+        self.assertEqual(client.meta.config.read_timeout, 600)
+        self.assertEqual(client.meta.config.connect_timeout, 60, "connecting still gives up after a minute")
+        self.assertEqual(client.meta.config.retries["total_max_attempts"], 1, "an agent is never re-run behind the user's back")
+
+    def test_a_timed_out_invoke_is_not_sent_again(self):
+        from botocore.exceptions import ReadTimeoutError
+        client = boto3.Session(region_name="eu-central-1", aws_access_key_id="x", aws_secret_access_key="y").client(
+            "bedrock-agentcore", config=aws._CLIENT_CONFIG["bedrock-agentcore"])
+        sent = []
+
+        def time_out(request, **kwargs):
+            sent.append(request)
+            raise ReadTimeoutError(endpoint_url=request.url)
+
+        client.meta.events.register("before-send.bedrock-agentcore.InvokeAgentRuntime", time_out)
+        with self.assertRaises(ReadTimeoutError):
+            client.invoke_agent_runtime(agentRuntimeArn="arn:aws:bedrock-agentcore:eu-central-1:123456789012:runtime/a-1",
+                                        runtimeSessionId="s" * 36, payload=b"{}")
+        self.assertEqual(len(sent), 1)
+
+
 class SequentialExecutor:
     """Stand-in for ThreadPoolExecutor so Stubber sees calls in a fixed order."""
 

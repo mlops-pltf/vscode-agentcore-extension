@@ -424,6 +424,15 @@ A scan for stale, redundant and oversized code after Phases 8-14. No unused func
 - [x] **R22** (A1) Split the two largest panel files by feature: chat history into `media/webview/history.js`, tool steps and the working group into `media/webview/steps.js`. No behaviour change; the panel tests guard it.
 - **D2** *(skipped 2026-11-26, open idea)* A2A tool calls as steps. Strands' A2A server sends no tool events (only text), and A2A has no standard for them. Proposed if wanted later: agents add a data part with the HTTP shapes (`current_tool_use`, `tool_result`) to a `working` status update.
 
+### Fix: agent read timeout and retries (2026-11-26)
+
+User request: raise the URL timeout to 10 minutes. There was no timeout in our code; boto3's default 60 s **read** timeout applied, so an agent silent for over a minute failed with "Read timeout on endpoint URL". Found while checking: boto3 then **retried** the call up to 5 times in total, re-running the agent (and repeating what it did).
+
+- [x] **F1** `bedrock-agentcore` client: `read_timeout=600` (gap between bytes, not total; AgentCore allows 15 min), connect timeout stays 60 s, other services keep boto3's defaults.
+- [x] **F2** Same client: `retries={"total_max_attempts": 1}`: no automatic re-runs; a failed reply shows Retry. (`max_attempts` counts retries after the first try, so it would still have allowed one; a test that times out a real boto3 call checks it's sent once.)
+
+*Unit-tested; to check at the office with an agent that takes over a minute.*
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

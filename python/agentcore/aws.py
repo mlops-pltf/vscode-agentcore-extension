@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import (
     ClientError,
     NoRegionError,
@@ -24,6 +25,18 @@ from agentcore.events import log
 _SSO_ERRORS = (SSOError, SSOTokenLoadError, TokenRetrievalError, UnauthorizedSSOTokenError)
 
 
+# How long to wait for the next bytes of an agent's reply. boto3's default is
+# 60 seconds, too short for agents that think (or call slow tools) before
+# answering. It is the gap between bytes, not the total: a reply that keeps
+# streaming can run longer. AgentCore allows requests of up to 15 minutes.
+AGENT_READ_TIMEOUT_SECONDS = 600
+
+# Per-service client settings: only the data plane (invoke, agent card, stop session) waits on agents.
+# No automatic retries there: boto3 retries a timed-out call up to 5 times, which
+# would run the agent again (and repeat what it did). A failed reply shows Retry instead.
+_CLIENT_CONFIG = {"bedrock-agentcore": Config(read_timeout=AGENT_READ_TIMEOUT_SECONDS,
+                                              retries={"total_max_attempts": 1})}  # the first try only
+
 # boto3 clients are thread-safe, but creating them is not, so cache under a lock
 _clients: Dict[Tuple[str, str, Optional[str]], object] = {}
 _clients_lock = threading.Lock()
@@ -35,7 +48,9 @@ def _client(profile: str, service: str, region: Optional[str] = None):
     key = (profile, service, region or None)
     with _clients_lock:
         if key not in _clients:
-            _clients[key] = boto3.Session(profile_name=profile, region_name=region or None).client(service)
+            session = boto3.Session(profile_name=profile, region_name=region or None)
+            config = _CLIENT_CONFIG.get(service)
+            _clients[key] = session.client(service, config=config) if config else session.client(service)
         return _clients[key]
 
 
