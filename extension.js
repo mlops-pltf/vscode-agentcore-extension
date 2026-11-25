@@ -3,6 +3,7 @@
 //   src/pythonBridge.js runs and supervises python/bridge.py
 //   src/pythonEnv.js    finds or creates the Python environment
 //   src/settings.js     reads the agentcore.* settings
+const path = require('path');
 const vscode = require('vscode');
 const { ChatViewProvider } = require('./src/chatView');
 const { PythonBridge } = require('./src/pythonBridge');
@@ -20,7 +21,9 @@ function activate(context) {
     getSettings: readSettings,
     log,
     onMessage: (message) => view.post(message),
-    onState: (state) => view.post({ type: 'bridge', state })
+    onState: (state) => view.post({ type: 'bridge', state }),
+    // Chat history files (python/agentcore/history.py), in VS Code's storage for this extension
+    env: { AGENTCORE_HISTORY_DIR: path.join(context.globalStorageUri.fsPath, 'history') }
   });
   view = new ChatViewProvider({ extensionUri: context.extensionUri, bridge, getSettings: readSettings, log });
 

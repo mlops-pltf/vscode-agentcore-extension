@@ -71,6 +71,11 @@
           "default": "auto",
           "markdownDescription": "How to call **A2A** agents: `message/stream` (live status and streamed text) or `message/send` (one answer). `auto` follows the agent's Agent Card (needs `bedrock-agentcore:GetAgentCard`; without it, `auto` sends)."
         },
+        "agentcore.history": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Save chats on this computer so they can be reopened and continued from **History**. Turning it off stops saving new chats; saved ones stay until you delete them (History → Clear all)."
+        },
         "agentcore.jsonReplies": {
           "type": "string",
           "enum": [

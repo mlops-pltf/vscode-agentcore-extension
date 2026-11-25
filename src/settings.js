@@ -16,6 +16,7 @@ function readSettings() {
     region: config.get('region') || '',
     a2aStreaming: streamingMode(config.get('a2aStreaming')),
     jsonReplies: ['full', 'text', 'raw'].includes(config.get('jsonReplies')) ? config.get('jsonReplies') : 'full',
+    history: config.get('history') !== false,
     jsonHiddenFields: (config.get('jsonHiddenFields') || []).filter((name) => typeof name === 'string'),
     debugRaw: config.get('debugRawResponses') === true
   };

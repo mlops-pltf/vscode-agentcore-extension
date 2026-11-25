@@ -396,6 +396,18 @@ User request: show agent text and tool calls in between while streaming, with a 
 
 *Done 2026-11-26 (mock, user-tested; spinner slowed to 1.4s a turn).* *Done when:* the mock's `tools` reply shows text and three tool steps in order, which stay after the reply and expand to input and result; the sample's stream gives the same through the extension's parser.
 
+### Phase 14: Chat history (added 2026-11-26)
+
+User request: "history chat, save the chats based on session-id" (was deferred until approval). *Decided (2026-11-26):* **view and continue**: a past chat reopens with all its messages and can be continued under the same session id; a note says the agent may not remember it if its session ended (New chat stops AgentCore sessions). A2A agents get their `contextId` (and a pending question's task) back from the saved chat, so they usually can continue.
+
+- [x] **T14.1** Python `history.py`: one JSON file per session id in a folder the extension passes (`AGENTCORE_HISTORY_DIR` = VS Code global storage `/history`): title (first prompt), agent(s), times, mock flag, and per turn the prompt as shown, agent, protocol, the reply (text and tool steps, as the panel shows them), how it ended (completed / cancelled / error) and its meta (footer, trace id, contextId...). Recorded by Python as it sends the events (no extra work for the panel), written atomically after each turn; newest 200 chats kept.
+- [x] **T14.2** Bridge actions: `list_history` -> `history {items}` (newest first), `get_history {sessionId}` -> `history_chat {chat}`, `delete_history {sessionId | all}`, `resume_session {sessionId}` (restores each A2A agent's context into `sessions`).
+- [x] **T14.3** Setting `agentcore.history` (default on): off = nothing new is saved (saved chats stay until deleted). The panel passes what it showed (`display`: prompt with @mention, agent name).
+- [x] **T14.4** Panel: a **History** button in the toolbar opens the list in the chat area (title, agent, message count, date, MOCK tag; delete per chat, Clear all, Back). Opening one ends the current chat (as New chat does), shows the past messages (replies with their tool steps, footers, Copy, trace and raw JSON buttons; no Retry), adds the "may not remember" note, sets the picker to that chat's last agent if it still exists, and continues under the same session id.
+- [x] **T14.5** Tests (Python history and bridge actions; panel: list, open, continue, delete, setting off), README, CHANGELOG. Privacy note in the README: chats are stored unencrypted on this computer; how to turn it off or clear it.
+
+*Done 2026-11-26 (mock and tests). A continued chat sends the saved session id as runtimeSessionId; AgentCore starts a fresh runtime session under it if the old one was stopped.* *Done when:* with the mock, chats appear in History after a reply, reopen with their replies and tool steps, continue (an A2A agent gets the same contextId as before), and can be deleted; with the setting off nothing new is saved.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

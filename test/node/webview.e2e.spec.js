@@ -978,3 +978,112 @@ test('working group: stays open with no answer, or when the user opened it while
   assert.strictEqual(p.last().querySelector('.work-group').open, true, 'not folded over the user');
   assert.strictEqual(p.last().querySelector('.answer').textContent, 'Final answer.');
 });
+
+test('history: chats are saved, listed, reopened after a restart and continued', { timeout: 60000 }, async (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcore-history-'));
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+
+  // First "VS Code session": an A2A chat with an @mention and tool steps
+  const p = openPanel({ historyDir: folder });
+  await p.ready();
+  p.type('hi');
+  await until(p.idle);
+  p.type('@demo-http-strands tools please');
+  await until(p.idle, 15000);
+  const firstContext = p.received.find((m) => m.type === 'done' && m.meta.contextId).meta.contextId;
+  const savedSession = p.sent.find((m) => m.action === 'invoke_agent').sessionId;
+  const invoke = p.sent.filter((m) => m.action === 'invoke_agent').pop();
+  assert.deepStrictEqual(plain(invoke.display), { prompt: '@demo-http-strands tools please', agentName: 'demo-http-strands', mentionLength: 18 });
+
+  p.$('historyBtn').click();
+  await until(() => p.$('historyView').querySelector('.history-item'));
+  assert.strictEqual(p.$('chat').hidden, true);
+  const item = p.$('historyView').querySelector('.history-item');
+  assert.strictEqual(item.querySelector('.history-title').textContent, 'hi');
+  assert.match(item.querySelector('.history-meta').textContent, /^MOCKdemo-http-strands · 2 messages · /);
+  assert.ok(item.classList.contains('current'), 'the open chat is marked');
+  p.$('historyView').querySelector('.history-head button').click();  // Back
+  assert.strictEqual(p.$('chat').hidden, false);
+  assert.strictEqual(p.bubbles().length, 2, 'the chat is untouched');
+  p.close();
+
+  // Second "VS Code session": reopen and continue
+  const q = openPanel({ historyDir: folder });
+  t.after(q.close);
+  await q.ready();
+  q.$('historyBtn').click();
+  await until(() => q.$('historyView').querySelector('.history-open'));
+  q.$('historyView').querySelector('.history-open').click();
+  await until(() => !q.$('chat').hidden && q.bubbles().length === 2);
+
+  const users = [...q.document.querySelectorAll('.msg.user')];
+  assert.deepStrictEqual(users.map((u) => u.textContent), ['hi', '@demo-http-strands tools please']);
+  assert.strictEqual(users[1].querySelector('.mention').textContent, '@demo-http-strands');
+  const [first, second] = q.bubbles();
+  assert.strictEqual(q.part(first, 'name').textContent, 'demo-a2a');
+  assert.ok(q.part(first, 'text').textContent.startsWith("You said: 'hi'"));
+  assert.match(q.part(first, 'footer').textContent, /^A2A · /);
+  assert.strictEqual(second.querySelector('.work-group .work-summary').textContent, 'Used 3 tools · 1 failed');
+  assert.strictEqual(second.querySelectorAll('.tool-step').length, 3);
+  assert.ok(second.querySelector('.answer').textContent.startsWith("The ticket service didn't answer"));
+  assert.ok(!q.document.querySelector('.retry'), 'no Retry on saved replies');
+  assert.match(q.document.querySelector('.msg.notice').textContent, /^Earlier chat, continued/);
+  assert.strictEqual(q.$('agentName').textContent, 'demo-http-strands', "the chat's last agent is picked");
+  assert.ok(q.sent.some((m) => m.action === 'resume_session' && m.sessionId === savedSession));
+
+  // Continue: same session id, and demo-a2a gets its old context back
+  q.type('@demo-a2a and now?');
+  await until(q.idle);
+  const continued = q.sent.filter((m) => m.action === 'invoke_agent').pop();
+  assert.strictEqual(continued.sessionId, savedSession);
+  assert.strictEqual(q.received.filter((m) => m.type === 'done').pop().meta.contextId, firstContext);
+
+  // Delete it, then the list is empty
+  q.$('historyBtn').click();
+  await until(() => q.$('historyView').querySelector('.history-item'));
+  assert.match(q.$('historyView').querySelector('.history-meta').textContent, /3 messages/);
+  q.$('historyView').querySelector('.history-item .icon-btn').click();
+  await until(() => q.$('historyView').querySelector('.history-empty'));
+  assert.strictEqual(q.$('historyView').querySelectorAll('.history-item').length, 0);
+});
+
+test('history: Clear all asks twice; saving can be turned off', { timeout: 30000 }, async (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcore-history-'));
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+
+  const p = openPanel({ historyDir: folder });
+  t.after(p.close);
+  await p.ready();
+  p.type('one');
+  await until(p.idle);
+  p.$('newChatBtn').click();
+  p.type('two');
+  await until(p.idle);
+  p.$('historyBtn').click();
+  await until(() => p.$('historyView').querySelectorAll('.history-item').length === 2);
+  assert.deepStrictEqual([...p.$('historyView').querySelectorAll('.history-title')].map((x) => x.textContent), ['two', 'one']);
+  const clear = p.$('historyView').querySelector('.clear-all');
+  clear.click();
+  assert.strictEqual(clear.textContent, 'Click again to delete all');
+  assert.ok(!p.sent.some((m) => m.action === 'delete_history'), 'nothing deleted after one click');
+  clear.click();
+  await until(() => p.$('historyView').querySelector('.history-empty'));
+  assert.ok(p.sent.some((m) => m.action === 'delete_history' && m.all));
+  p.close();
+
+  const q = openPanel({ historyDir: folder, settings: { ...MOCK_SETTINGS, history: false } });
+  t.after(q.close);
+  await q.ready();
+  q.type('not saved');
+  await until(q.idle);
+  q.$('historyBtn').click();
+  await until(() => q.$('historyView').querySelector('.history-empty'));
+  assert.match(q.$('historyView').textContent, /Saving is off/);
+  assert.strictEqual(fs.readdirSync(folder).filter((f) => f.endsWith('.json')).length, 0);
+});

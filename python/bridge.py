@@ -8,7 +8,7 @@ import json
 import sys
 import threading
 
-from agentcore import agents, cards, invocations, sessions
+from agentcore import agents, cards, history, invocations, sessions
 from agentcore.backends import backend_for, backend_of
 from agentcore.errors import AgentCoreError, SsoExpired
 from agentcore.events import claim_stdout, log, send
@@ -93,6 +93,44 @@ def _stop_runtime_sessions(session_id: str, used) -> None:
             log(f"Could not stop runtime session {session_id[:8]}... on {agent}: {e}{hint}", "warn")
 
 
+# ---------- chat history (Phase 14) ----------
+
+def _send_history(settings: dict) -> None:
+    send({"type": "history", "items": history.list_chats(), "enabled": history.enabled(settings)})
+
+
+def list_history(cmd: dict):
+    _send_history(cmd.get("settings") or {})
+
+
+def get_history(cmd: dict):
+    session_id = cmd.get("sessionId")
+    try:
+        chat = history.load(session_id)
+    except ValueError:
+        chat = None
+    send({"type": "history_chat", "sessionId": session_id, "chat": chat})
+
+
+def delete_history(cmd: dict):
+    if cmd.get("all"):
+        history.delete_all()
+    else:
+        try:
+            history.delete(cmd.get("sessionId"))
+        except ValueError as e:
+            send({"type": "error", "message": f"Could not delete the chat: {e}"})
+    _send_history(cmd.get("settings") or {})
+
+
+def resume_session(cmd: dict):
+    """Continuing a saved chat: A2A agents get their contextId back."""
+    try:
+        history.restore(cmd.get("sessionId"))
+    except ValueError as e:
+        send({"type": "error", "message": f"Could not continue the chat: {e}"})
+
+
 def whoami(cmd: dict):
     _in_background(_whoami, cmd)
 
@@ -120,6 +158,10 @@ HANDLERS = {
     "cancel": cancel,
     "reset_session": reset_session,
     "whoami": whoami,
+    "list_history": list_history,
+    "get_history": get_history,
+    "delete_history": delete_history,
+    "resume_session": resume_session,
 }
 
 

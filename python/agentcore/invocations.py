@@ -10,7 +10,7 @@ import time
 import uuid
 from typing import Dict, Tuple
 
-from agentcore import protocols, sessions, tracing
+from agentcore import history, protocols, sessions, tracing
 from agentcore.backends import backend_for, is_mock
 from agentcore.cancel import CancelToken
 from agentcore.errors import AgentCoreError, SsoExpired
@@ -50,7 +50,11 @@ def wait_all() -> None:
 
 def _run(cmd: dict, request_id: str, token: CancelToken) -> None:
     settings = cmd.get("settings") or {}
-    emitter = Emitter(request_id, debug_raw=settings.get("debugRaw", False))
+    # With chat history on, the emitter also records the turn and saves it at the end
+    if history.enabled(settings):
+        emitter = history.TurnRecorder(request_id, cmd, settings, debug_raw=settings.get("debugRaw", False))
+    else:
+        emitter = Emitter(request_id, debug_raw=settings.get("debugRaw", False))
     backend = backend_for(settings)
     started = time.monotonic()
     trace = {}  # traceId/cloudwatchUrl once the agent has answered

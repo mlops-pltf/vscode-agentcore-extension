@@ -379,6 +379,77 @@
     scrollToBottom(reply.container);
   }
 
+  // ---------- chat history (Phase 14) ----------
+
+  const WAITING = ['input-required', 'auth-required'];
+
+  // A saved turn (python/agentcore/history.py), shown like it was: the prompt,
+  // then the reply with its tool steps, footer and actions (no Retry)
+  function renderPastTurn(container, turn) {
+    appendMessage(container, turn.prompt || '', 'user', turn.mentionLength || 0);
+    const saved = turn.reply || {};
+    const meta = saved.meta || {};
+    const reply = createReply(container, turn.agentName || 'Agent');
+    for (const segment of saved.segments || []) {
+      if (segment.kind === 'text') {
+        reply.segments.push({ kind: 'text', text: segment.text || '' });
+        reply.received = true;
+      } else if (segment.kind === 'tool' && segment.id) {
+        const step = { ...segment, open: false };
+        reply.steps.set(step.id, step);
+        reply.segments.push(step);
+      }
+    }
+    finishReply(reply, { footer: footerText(meta), error: saved.error, trace: meta, rawJson: meta.rawJson });
+    if (WAITING.includes(meta.taskState)) setStatus(reply, 'Agent is waiting for your input');
+    if (!reply.segments.length && !saved.error) reply.text.textContent = saved.state === 'cancelled' ? '(cancelled)' : '(empty reply)';
+    return reply;
+  }
+
+  function when(iso) {
+    const date = new Date(iso);
+    return isNaN(date) ? '' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  // The History list. items: [{sessionId, title, agentName, turns, updated, mock}]
+  function renderHistory(container, { items, enabled, currentSessionId, onOpen, onDelete, onClearAll, onBack }) {
+    const view = el('div', 'history');
+    const head = el('div', 'history-head');
+    const back = el('button', 'secondary', '← Back');
+    back.addEventListener('click', onBack);
+    head.append(back, el('h2', '', 'History'));
+    if (items.length) {
+      // Two clicks, so one stray click can't delete everything
+      const clear = el('button', 'secondary clear-all', 'Clear all');
+      clear.addEventListener('click', () => {
+        if (clear.dataset.confirm) return onClearAll();
+        clear.dataset.confirm = '1';
+        clear.textContent = 'Click again to delete all';
+      });
+      head.appendChild(clear);
+    }
+    view.appendChild(head);
+    if (!enabled) view.appendChild(el('p', 'note', 'Saving is off (setting agentcore.history). Saved chats stay here until you delete them.'));
+    if (!items.length) view.appendChild(el('p', 'history-empty', 'No saved chats yet. Chats are saved here as you go.'));
+
+    const list = el('ul', 'history-list');
+    for (const item of items) {
+      const row = el('li', 'history-item' + (item.sessionId === currentSessionId ? ' current' : ''));
+      const open = el('button', 'history-open');
+      open.title = 'Open and continue this chat';
+      open.appendChild(el('span', 'history-title', item.title));
+      const details = [item.agentName, `${item.turns} message${item.turns === 1 ? '' : 's'}`, when(item.updated)].filter(Boolean).join(' · ');
+      const meta = el('span', 'history-meta', details);
+      if (item.mock) meta.prepend(el('span', 'badge', 'MOCK'));
+      open.appendChild(meta);
+      open.addEventListener('click', () => onOpen(item.sessionId));
+      row.append(open, iconButton('trash', 'Delete this chat', () => onDelete(item.sessionId)));
+      list.appendChild(row);
+    }
+    view.appendChild(list);
+    container.replaceChildren(view);
+  }
+
   // e.g. "A2A · streamed · 1.8s · completed"
   function footerText(meta) {
     const parts = [meta.protocol];
@@ -389,5 +460,8 @@
     return parts.filter(Boolean).join(' · ');
   }
 
-  app.chat = { configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, addTool, setStatus, finishReply, footerText };
+  app.chat = {
+    configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, addTool, setStatus, finishReply, footerText,
+    renderPastTurn, renderHistory
+  };
 })(window.AgentCore);

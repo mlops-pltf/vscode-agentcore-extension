@@ -3,7 +3,7 @@
 // posts its events back. Rendering lives in chat.js, helpers in dom.js.
 (function (app) {
   const vscode = acquireVsCodeApi();
-  const { $, newId, setOptions, setPlaceholder } = app.dom;
+  const { $, el, newId, setOptions, setPlaceholder } = app.dom;
   const chatView = app.chat;
 
   // Copy, open link, insert code...: handled by the extension (src/editorActions.js)
@@ -35,6 +35,7 @@
   let lastPrompt = '';         // for ↑ in an empty composer
   const requests = new Map();  // requestId -> reply being written (see chat.createReply)
   let mentionBox;              // the @agent support (mentions.js), set up below
+  let continuing = false;      // reopening a saved chat: an agent change must not start a new chat
 
   const profileSelect = $('profileSelect');
   const agentSelect = $('agentSelect');
@@ -122,7 +123,7 @@
 
   function onAgentChanged() {
     const arn = agentSelect.value;
-    if (arn !== currentAgentArn && turns > 0) {
+    if (arn !== currentAgentArn && turns > 0 && !continuing) {
       // A2A context belongs to one agent, so a different agent gets a new chat
       startNewSession();
     }
@@ -188,7 +189,45 @@
     sessionId = newId();
     turns = 0;
     $('switchNotice').hidden = true;
+    closeHistory();
     showWelcome();
+  }
+
+  // ---------- chat history (Phase 14) ----------
+
+  function openHistory() {
+    $('historyView').replaceChildren(el('p', 'history-loading', 'Loading...'));
+    $('historyView').hidden = false;
+    chat.hidden = true;
+    vscode.postMessage({ action: 'list_history' });
+  }
+
+  function closeHistory() {
+    $('historyView').hidden = true;
+    chat.hidden = false;
+  }
+
+  // Reopen a saved chat and continue it under its session id
+  function continueChat(saved) {
+    stopAll();
+    if (turns > 0 && saved.sessionId !== sessionId) vscode.postMessage({ action: 'reset_session', sessionId });
+    sessionId = saved.sessionId;
+    turns = saved.turns.length;
+    $('switchNotice').hidden = true;
+    chat.replaceChildren();
+    for (const turn of saved.turns) chatView.renderPastTurn(chat, turn);
+    chatView.appendMessage(chat, `Earlier chat, continued. The agent may not remember it if its session has ended.`, 'notice');
+    // The chat's last agent in the picker, without starting a new chat
+    const last = saved.turns[saved.turns.length - 1];
+    if (last && agents.has(last.agentArn) && last.agentArn !== currentAgentArn) {
+      continuing = true;
+      agentSelect.value = last.agentArn;
+      agentSelect.dispatchEvent(new Event('change'));
+      continuing = false;
+    }
+    lastPrompt = last ? last.prompt : lastPrompt;
+    vscode.postMessage({ action: 'resume_session', sessionId });
+    closeHistory();
   }
 
   function updateBusy() {
@@ -231,7 +270,10 @@
     promptInput.value = '';
     autoGrow();
     const agent = agents.get(agentArn);
-    invoke({ prompt, agentArn, protocol: protocolFor(agentArn), agentName: agent ? agent.name : 'Agent' });
+    invoke({
+      prompt, agentArn, protocol: protocolFor(agentArn), agentName: agent ? agent.name : 'Agent',
+      display: text, mentionLength: mention ? mention.length : 0
+    });
   }
 
   // Ask the agent; `replace` is a failed reply to put the new one in place of (Retry)
@@ -239,6 +281,7 @@
     // Only the latest failed reply can be retried
     for (const button of chat.querySelectorAll('.retry')) button.remove();
     const requestId = newId();
+    closeHistory();
     const reply = chatView.createReply(chat, request.agentName);
     if (replace) replace.bubble.replaceWith(reply.bubble);
     reply.request = request;
@@ -253,7 +296,9 @@
       agentArn: request.agentArn,
       protocol: request.protocol,
       prompt: request.prompt,
-      sessionId
+      sessionId,
+      // What the chat showed, for the saved history (python/agentcore/history.py)
+      display: { prompt: request.display || request.prompt, agentName: request.agentName, mentionLength: request.mentionLength || 0 }
     });
   }
 
@@ -332,6 +377,25 @@
       const reply = requests.get(msg.requestId);
       if (reply) chatView.addChunk(reply, msg.text);
     },
+    history(msg) {
+      if ($('historyView').hidden) return;
+      chatView.renderHistory($('historyView'), {
+        items: msg.items,
+        enabled: msg.enabled,
+        currentSessionId: turns > 0 ? sessionId : null,
+        onOpen: (id) => vscode.postMessage({ action: 'get_history', sessionId: id }),
+        onDelete: (id) => vscode.postMessage({ action: 'delete_history', sessionId: id }),
+        onClearAll: () => vscode.postMessage({ action: 'delete_history', all: true }),
+        onBack: closeHistory
+      });
+    },
+    history_chat(msg) {
+      if (msg.chat && msg.chat.turns && msg.chat.turns.length) {
+        continueChat(msg.chat);
+      } else {
+        $('historyView').prepend(el('p', 'note warn', 'That chat could not be opened (it may have been deleted).'));
+      }
+    },
     tool(msg) {
       const reply = requests.get(msg.requestId);
       if (reply) chatView.addTool(reply, msg);
@@ -384,6 +448,7 @@
   });
   agentSelect.addEventListener('change', onAgentChanged);
   $('refreshBtn').addEventListener('click', () => loadAgents(true));
+  $('historyBtn').addEventListener('click', () => ($('historyView').hidden ? openHistory() : closeHistory()));
   $('ssoLoginBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'ssoLogin', profile: profileSelect.value });
   });

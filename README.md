@@ -5,6 +5,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 ## Features
 
 - **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents). With many agents, **search** the list by name or description.
+- **History.** Every chat is saved on your computer. Reopen one from **History** to read it again and keep going; A2A agents pick up their conversation where it left off.
 - **Ask another agent with @.** Start a message with `@agent-name` to send just that message to another agent, without leaving the chat. Each agent keeps its own conversation.
 - **HTTP and A2A.** A toggle under the message box switches protocol per agent; it starts on the detected one (marked with a dot) and remembers your choice.
 - **Tool calls you can follow, then the answer**: while the agent works, its tool calls appear as steps (running, then done or failed, expandable to input and result). When it's done, the work folds into one line ("Used 3 tools") and the final answer stands on its own.
@@ -43,6 +44,7 @@ The chat opens as a tab in the **Secondary Side Bar** (on the right, next to Git
 |---|---|---|
 | `agentcore.region` | `eu-central-1` | AWS region for AgentCore. Clear it to use the region from your AWS profile. |
 | `agentcore.a2aStreaming` | `auto` | How to call A2A agents. `auto`: stream (`message/stream`) when the agent's Agent Card says it can, otherwise one answer (`message/send`). `on` / `off` force one or the other. |
+| `agentcore.history` | `true` | Save chats on this computer so they can be reopened from **History**. Off: new chats aren't saved (saved ones stay until deleted). |
 | `agentcore.jsonReplies` | `full` | How to show JSON replies. `full`: the main text, then every other field as readable Markdown (lists, tables). `text`: only the main text. `raw`: the whole reply as a JSON block. |
 | `agentcore.jsonHiddenFields` | `[]` | Field names to leave out of JSON replies, besides the built-in ones (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency). |
 | `agentcore.mock` | `false` | Use the built-in mock AgentCore instead of AWS (demos and development). |
@@ -126,6 +128,14 @@ Set `agentcore.mock` to `true`. The chat shows a **MOCK** badge and lists three 
 | `error` | the agent call itself fails |
 
 Starting a new chat after using **demo-unknown** logs a permission warning on purpose (its mock "role" can't stop sessions).
+
+## Chat history and privacy
+
+Chats are saved as you go, one file per chat, in VS Code's storage folder for this extension (`globalStorage/<publisher>.agentcore-chat/history`), **unencrypted**, on this computer only. The newest 200 chats are kept.
+
+- **History** (clock icon at the top): reopen a chat to read it and continue it. The agent may not remember earlier messages if its AgentCore session ended (**New chat** ends it); A2A agents get their conversation id back and usually can.
+- Delete one chat with its trash icon, or everything with **Clear all**.
+- To stop saving, turn off `agentcore.history`.
 
 ## Troubleshooting
 

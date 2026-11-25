@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Chat history** (`agentcore.history`, on by default): every chat is saved per session id on this computer; **History** lists them (title, agent, messages, date) to reopen and continue (A2A agents get their context back), delete one, or clear all. Newest 200 kept.
 - **Tool calls as steps** inside the reply, where they happened (running, then ✓ or ✕), expandable to input and result; per call (`toolUseId`), so repeat calls show. Replaces the passing "Using tool" status line. The sample agent shows how to send them from Strands.
 - **Final answer apart from the work**: with tool calls, the narration and steps sit in a "working" group (open while the agent works, folded after: "Used 3 tools · 1 failed") above the final answer; Copy reply copies the final answer.
 - **@agent**: start a message with `@agent-name` (type `@` for a searchable list) to send it to that agent only, in the same chat; each agent keeps its own conversation (A2A context per agent).

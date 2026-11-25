@@ -16,10 +16,11 @@ def invoke(request_id, prompt):
 
 
 class BridgeSmokeTest(unittest.TestCase):
-    def run_bridge(self, *batches, pause=0.0):
+    def run_bridge(self, *batches, pause=0.0, env=None):
         """Send each batch of commands, pausing between batches; return parsed events."""
         proc = subprocess.Popen([sys.executable, "-W", "ignore", BRIDGE],
-                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                                env={**os.environ, **(env or {})})
         for i, batch in enumerate(batches):
             if i:
                 time.sleep(pause)
@@ -129,6 +130,38 @@ class BridgeSmokeTest(unittest.TestCase):
         context = {rid: self.for_request(events, rid)[-1]["meta"]["contextId"] for rid in ("A1", "B1", "A2")}
         self.assertNotEqual(context["A1"], context["B1"], "agent b starts its own conversation")
         self.assertEqual(context["A1"], context["A2"], "agent a continues where it was")
+
+    def test_history_saved_listed_and_continued_by_a_new_backend(self):
+        import tempfile
+        folder = tempfile.mkdtemp(prefix="agentcore-history-")
+        self.addCleanup(__import__("shutil").rmtree, folder, True)
+        env = {"AGENTCORE_HISTORY_DIR": folder}
+        sid = "h" * 36
+        first = dict(invoke("H1", "hi"), protocol="A2A", sessionId=sid, agentArn="arn:x:runtime/agent_a",
+                     display={"prompt": "hi", "agentName": "Agent A"})
+        events = self.run_bridge([first], [{"action": "list_history"}, {"action": "get_history", "sessionId": sid}],
+                                 pause=1.0, env=env)
+        context = self.for_request(events, "H1")[-1]["meta"]["contextId"]
+        listed = [e for e in events if e["type"] == "history"][0]
+        self.assertTrue(listed["enabled"])
+        self.assertEqual([(i["sessionId"], i["title"], i["agentName"], i["turns"]) for i in listed["items"]],
+                         [(sid, "hi", "Agent A", 1)])
+        chat = [e for e in events if e["type"] == "history_chat"][0]["chat"]
+        self.assertEqual(chat["turns"][0]["reply"]["state"], "completed")
+
+        # A new backend (e.g. VS Code restarted): continue the chat, same A2A context
+        again = dict(invoke("H2", "and again"), protocol="A2A", sessionId=sid, agentArn="arn:x:runtime/agent_a")
+        events = self.run_bridge([{"action": "resume_session", "sessionId": sid}], [again], pause=0.3, env=env)
+        self.assertEqual(self.for_request(events, "H2")[-1]["meta"]["contextId"], context)
+
+        events = self.run_bridge([{"action": "delete_history", "sessionId": sid}], env=env)
+        self.assertEqual([e for e in events if e["type"] == "history"][0]["items"], [])
+
+        # Setting off: nothing new saved
+        off = dict(invoke("H3", "hi"), sessionId="o" * 36, settings={"history": False})
+        events = self.run_bridge([off], [{"action": "list_history", "settings": {"history": False}}], pause=1.0, env=env)
+        listed = [e for e in events if e["type"] == "history"][0]
+        self.assertEqual((listed["items"], listed["enabled"]), ([], False))
 
     def test_cancel(self):
         events = self.run_bridge([invoke("S", "slow")], [{"action": "cancel", "requestId": "S"}], pause=1.5)

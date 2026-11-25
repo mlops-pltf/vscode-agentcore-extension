@@ -149,8 +149,11 @@ function inlineScripts(html) {
     (_tag, file) => `<script>${fs.readFileSync(file, 'utf8')}</script>`);
 }
 
-function openPanel({ savedState, settings = MOCK_SETTINGS } = {}) {
-  const python = cp.spawn(PYTHON, ['-W', 'ignore', path.join(REPO, 'python', 'bridge.py')]);
+// historyDir: a folder for saved chats (Phase 14); without it, history is off
+function openPanel({ savedState, settings = MOCK_SETTINGS, historyDir } = {}) {
+  const env = { ...process.env, AGENTCORE_HISTORY_DIR: historyDir || '' };
+  const python = cp.spawn(PYTHON, ['-W', 'ignore', path.join(REPO, 'python', 'bridge.py')], { env });
+  const received = [];  // every message the panel got from Python
   const sent = [];
   let state = savedState;
   const dom = new JSDOM(inlineScripts(panelHtml()), {
@@ -171,12 +174,13 @@ function openPanel({ savedState, settings = MOCK_SETTINGS } = {}) {
   const document = window.document;
   readline.createInterface({ input: python.stdout }).on('line', (line) => {
     const message = JSON.parse(line);
+    received.push(message);
     if (message.type !== 'raw') window.dispatchEvent(new window.MessageEvent('message', { data: message }));
   });
 
   const $ = (id) => document.getElementById(id);
   const panel = {
-    window, document, $, sent, python,
+    window, document, $, sent, received, python,
     getState: () => state,
     post: (data) => window.dispatchEvent(new window.MessageEvent('message', { data })),
     bubbles: () => [...document.querySelectorAll('.msg.agent')],

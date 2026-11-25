@@ -19,8 +19,10 @@ class PythonBridge {
    * @param {object} options.log   the Output channel
    * @param {(message: object) => void} options.onMessage   events for the panel
    * @param {(state: string) => void} options.onState   'ready' | 'restarting' | 'down'
+   * @param {object} [options.env]   extra environment variables for Python (e.g. the chat history folder)
    */
-  constructor({ extensionDir, findPython, getSettings, log, onMessage, onState }) {
+  constructor({ extensionDir, findPython, getSettings, log, onMessage, onState, env }) {
+    this._env = env || {};
     this._extensionDir = extensionDir;
     this._findPython = findPython;
     this._getSettings = getSettings;
@@ -53,7 +55,7 @@ class PythonBridge {
 
     const scriptPath = path.join(this._extensionDir, 'python', 'bridge.py');
     this._log.info(`Starting Python bridge: ${pythonPath} ${scriptPath}`);
-    const proc = cp.spawn(pythonPath, [scriptPath]);
+    const proc = cp.spawn(pythonPath, [scriptPath], { env: { ...process.env, ...this._env } });
     this._process = proc;
 
     readline.createInterface({ input: proc.stdout }).on('line', (line) => this._onLine(line));

@@ -30,6 +30,9 @@ npm run test:py
 | `test_agents.py` | Agent listing: chat-only filter, cache, region, `ListAgentRuntimes`/`GetAgentRuntime` via Stubber |
 | `test_cards.py` | Agent Cards: parsing, cache, permission errors, automatic streaming choice |
 | `test_tracing_sessions_identity.py` | Trace ids and the `traceId` fallback, stopping sessions, caller identity |
+| `test_history.py` | Chat history: recording turns as shown, saving, listing, deleting, keeping the newest chats, restoring A2A context, safe file names |
+| `test_tool_steps.py` | Tool calls as steps: event shapes (Strands and the sample's), shortening, the update tracker |
+| `test_json_markdown.py` | JSON replies as Markdown: rules, hidden fields, modes, the HTTP paths |
 | `test_bridge_smoke.py` | `bridge.py` as a subprocess, like the extension runs it: concurrent replies, cancel, A2A conversations, new actions |
 
 `helpers.py` has a recording emitter, fake responses and an `InvokeContext` builder.
