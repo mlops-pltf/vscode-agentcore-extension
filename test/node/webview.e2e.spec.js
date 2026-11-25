@@ -135,10 +135,10 @@ test('HTTP status line, stop and errors', async (t) => {
   p.pick('demo-http-strands');
 
   p.type('tool hi');
-  await until(() => !p.part(p.last(), 'status').hidden, 3000);
-  assert.strictEqual(p.part(p.last(), 'status').textContent, 'Using tool: web_search');
+  await until(() => p.last().querySelector('.tool-step'), 3000);
+  assert.strictEqual(p.last().querySelector('.tool-step .tool-name').textContent, 'web_search', 'a tool call is a step now');
   await until(p.idle);
-  assert.strictEqual(p.part(p.last(), 'status').hidden, true, 'progress status removed when done');
+  assert.strictEqual(p.part(p.last(), 'status').hidden, true);
   assert.match(p.part(p.last(), 'footer').textContent, /^HTTP · \d+\.\ds · completed$/);
 
   p.type('slow');
@@ -866,4 +866,115 @@ test('@ with an unknown agent or no question: a note, nothing sent', async (t) =
   keyInBox(p, 'Enter');
   assert.strictEqual($('mentionNote').textContent, 'Add your question after @demo-a2a.');
   assert.ok(!p.sent.some((m) => m.action === 'invoke_agent'));
+});
+
+test('tool steps: a working group (open while working, folded after), then the final answer', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  p.pick('demo-http-strands');
+
+  p.type('tools please');
+  // While a tool runs: the group is open, says it's working, the step spins
+  assert.ok(await until(() => p.last().querySelector('.tool-step[data-status="running"]'), 4000), 'running step');
+  const working = p.last().querySelector('.work-group');
+  assert.strictEqual(working.open, true);
+  assert.strictEqual(working.dataset.state, 'working');
+  assert.match(working.querySelector('.work-summary').textContent, /^Working\.\.\. \(1 tool so far\)$/);
+  await until(p.idle, 15000);
+
+  const text = p.part(p.last(), 'text');
+  assert.deepStrictEqual([...text.children].map((c) => c.className), ['work-group', 'answer']);
+  const group = text.querySelector('.work-group');
+  assert.strictEqual(group.open, false, 'folded when the reply is done');
+  assert.strictEqual(group.querySelector('.work-summary').textContent, 'Used 3 tools · 1 failed');
+
+  // Inside: the narration and steps in order
+  const kinds = [...group.querySelector('.work-body').children].map((c) => c.classList.contains('tool-step') ? 'tool' : c.tagName.toLowerCase());
+  assert.deepStrictEqual(kinds, ['p', 'tool', 'p', 'tool', 'p', 'ul', 'p', 'tool']);
+  const steps = [...group.querySelectorAll('.tool-step')];
+  assert.deepStrictEqual(steps.map((s) => [s.querySelector('.tool-name').textContent, s.dataset.status, s.querySelector('.tool-verb').textContent]), [
+    ['current_time', 'success', 'Used'],
+    ['search_docs', 'success', 'Used'],
+    ['lookup_ticket', 'error', 'Failed']
+  ]);
+  assert.strictEqual(steps[0].querySelector('.tool-input').textContent, '{"timezone": "UTC"}');
+  assert.deepStrictEqual([...steps[0].querySelectorAll('.tool-pre')].map((x) => x.textContent), ['{"timezone": "UTC"}', '2026-11-25T10:42:07Z']);
+  assert.strictEqual(steps[2].querySelectorAll('.tool-label')[1].textContent, 'Error');
+
+  // The final answer: the text after the last tool call
+  assert.strictEqual(text.querySelector('.answer').textContent, "The ticket service didn't answer, so I can't confirm the change status yet.");
+
+  // Copy reply copies the final answer only
+  [...p.last().querySelectorAll('.reply-actions button')].find((b) => b.getAttribute('aria-label') === 'Copy reply').click();
+  assert.strictEqual(p.sent.filter((m) => m.type === 'editor').pop().text.trim(), "The ticket service didn't answer, so I can't confirm the change status yet.");
+
+  // Opening the group again sticks
+  group.open = true;
+  group.dispatchEvent(new p.window.Event('toggle'));
+  assert.strictEqual(p.last().querySelector('.work-group').open, true);
+
+  // Replies without tools have no group
+  p.type('hi');
+  await until(p.idle);
+  assert.strictEqual(p.last().querySelector('.work-group'), null);
+});
+
+test('tool steps: open state survives streaming; unfinished steps are marked stopped', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  p.pick('demo-http-strands');
+  p.type('slow');  // a real request to attach hand-made events to
+  const requestId = p.sent.filter((m) => m.action === 'invoke_agent').pop().requestId;
+  await sleep(50);
+  p.post({ type: 'tool', requestId, id: 'x1', name: 'lookup', status: 'running', input: '{"id": 1}' });
+  await until(() => p.last().querySelector('.tool-step'));
+  const step = p.last().querySelector('.tool-step');
+  step.open = true;
+  step.dispatchEvent(new p.window.Event('toggle'));
+  p.post({ type: 'chunk', requestId, text: 'more text' });
+  await until(() => p.part(p.last(), 'text').textContent.includes('more text'));
+  assert.strictEqual(p.last().querySelector('.tool-step').open, true, 'still open after a re-render');
+
+  p.$('stopBtn').click();
+  await until(p.idle);
+  assert.strictEqual(p.last().querySelector('.tool-step').dataset.status, 'stopped');
+  assert.strictEqual(p.last().querySelector('.tool-verb').textContent, 'Stopped');
+});
+
+test('working group: stays open with no answer, or when the user opened it while working', async (t) => {
+  const p = openPanel();
+  t.after(p.close);
+  await p.ready();
+  p.pick('demo-http-strands');
+  const start = () => {
+    p.type('slow');
+    return p.sent.filter((m) => m.action === 'invoke_agent').pop().requestId;
+  };
+
+  // Ends right after a failed tool: nothing to fold away for
+  let id = start();
+  await sleep(50);
+  p.post({ type: 'tool', requestId: id, id: 'a', name: 'deploy', status: 'error', result: 'denied' });
+  p.post({ type: 'done', requestId: id, meta: { protocol: 'HTTP', state: 'completed' } });
+  assert.strictEqual(p.last().querySelector('.work-group').open, true);
+  assert.ok(!p.last().querySelector('.reply-actions [aria-label="Copy reply"]'), 'no answer to copy');
+  await until(p.idle);
+
+  // The user closes it while working, then reopens it: their choice wins at the end
+  id = start();
+  await sleep(50);
+  p.post({ type: 'tool', requestId: id, id: 'b', name: 'search', status: 'success' });
+  await until(() => p.last().querySelector('.work-group'));
+  let group = p.last().querySelector('.work-group');
+  group.open = false;
+  group.dispatchEvent(new p.window.Event('toggle'));
+  group = p.last().querySelector('.work-group');
+  group.open = true;
+  group.dispatchEvent(new p.window.Event('toggle'));
+  p.post({ type: 'chunk', requestId: id, text: 'Final answer.' });
+  p.post({ type: 'done', requestId: id, meta: { protocol: 'HTTP', state: 'completed' } });
+  assert.strictEqual(p.last().querySelector('.work-group').open, true, 'not folded over the user');
+  assert.strictEqual(p.last().querySelector('.answer').textContent, 'Final answer.');
 });

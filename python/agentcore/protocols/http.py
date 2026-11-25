@@ -9,11 +9,11 @@ import json
 from typing import List, Optional
 
 from agentcore.errors import AgentCoreError
-from agentcore import json_markdown
+from agentcore import json_markdown, tool_steps
 from agentcore.events import Emitter
 from agentcore.protocols.base import AgentProtocol, InvokeContext
 from agentcore.response import AgentResponse
-from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, TOOL, extract_text
+from agentcore.text_extract import DATA, ERROR, FINAL, RAW_EVENT, extract_text
 
 HTTP_PROMPT_KEY = "prompt"
 
@@ -32,7 +32,7 @@ class HttpProtocol(AgentProtocol):
         final_text: Optional[str] = None
         final_event = None  # the stream's last final event, for its other fields
         shown_json = []     # JSON shown as Markdown, for "Open raw JSON"
-        tools_seen = set()
+        steps = tool_steps.StepTracker()  # tool calls, shown as steps in the reply
 
         for event in response.events():
             text, kind = extract_text(event.value)
@@ -52,6 +52,11 @@ class HttpProtocol(AgentProtocol):
                 streamed = True
                 continue
 
+            for step in tool_steps.steps_in(event.value):
+                changed = steps.update(step)
+                if changed:
+                    emitter.tool(changed)
+
             if not text:
                 continue
             if kind == DATA:
@@ -62,9 +67,6 @@ class HttpProtocol(AgentProtocol):
             elif kind == FINAL:
                 final_text = text
                 final_event = event.value
-            elif kind == TOOL and text not in tools_seen:
-                tools_seen.add(text)
-                emitter.status(f"Using tool: {text}")
 
         # Nothing streamed as "data": fall back to whatever else we saw (A4)
         if not streamed and not response.cancelled:

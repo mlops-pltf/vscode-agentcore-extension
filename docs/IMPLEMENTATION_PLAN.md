@@ -383,6 +383,19 @@ User request: "call the agents from the chat box using @, like '@agent1, can you
 
 *Done 2026-11-25 (mock, user-tested).* *Done when:* with the mock, `@demo-http-strands hi` from a demo-a2a chat is answered by the HTTP agent over HTTP, the next plain message goes back to demo-a2a with its A2A context intact, and the pop-up works by keyboard and mouse.
 
+### Phase 13: Tool calls as steps in the reply (added 2026-11-25)
+
+User request: show agent text and tool calls in between while streaming, with a `BedrockAgentCoreApp` + Strands sample showing how, and a mock demo. Before this, a tool call was only a passing "Using tool: x" status line above the reply (removed at the end, once per tool name).
+
+- [x] **T13.1** Python `tool_steps.py`: tool events become `tool` events for the panel `{id, name, input, status, result}` (`status` running / success / error). Understood shapes: `{"current_tool_use": {toolUseId, name, input}}` (Strands; partial input text ignored), `{"tool_result": {toolUseId, status, content}}` (the sample's), and Strands' own `{"message": ...}` events: assistant `toolUse` blocks (full input) and user `toolResult` blocks. Inputs and results are shortened (300 / 1000 characters). Steps are per call (`toolUseId`), so repeat calls of one tool show; an update is only sent when something changed. The old "Using tool" status line goes.
+- [x] **T13.2** Panel: a reply is a sequence of text and tool steps in arrival order; each step sits where it happened and stays: spinner while running, then ✓ / ✕, "Used `current_time`" with a short input summary; expandable (native `<details>`, kept open across re-renders) to show the input and result. Steps still running when the reply ends are marked stopped. Copy reply copies only the text.
+- [x] **T13.3** Mock keyword `tools` on the HTTP agent: text, then three tool calls (success, success via a Strands-style result message, error) with pauses, and text between them.
+- [x] **T13.4** Sample agent (`samples/http-agent/agent.py`): forwards each call once when it starts, its full input when known, and its result (`tool_result`, shortened) from Strands' events; tests with a fake Strands agent read through the extension's parser.
+- [x] **T13.5** Tests (Python parsing, HTTP protocol, panel steps), reply format guide, README, CHANGELOG.
+- [x] **T13.6** *(added 2026-11-26, user request: "get the final output separate, like GitHub Copilot")* With tool calls, the reply splits into a **working** group (narration and steps up to the last tool call: open while the agent works, "Working... (2 tools so far)"; folded when done, "Used 3 tools · 1 failed") and the **final answer** below it (the text after the last tool call: the model's last turn). The group stays open if there's no answer or the user opened/closed it while working. Copy reply copies the final answer. Replies without tools are unchanged. Panel-only; nothing new needed from agents. Text after a tool call moves into the group if another tool call follows.
+
+*Done 2026-11-26 (mock, user-tested; spinner slowed to 1.4s a turn).* *Done when:* the mock's `tools` reply shows text and three tool steps in order, which stay after the reply and expand to input and result; the sample's stream gives the same through the extension's parser.
+
 ## 5. Manual test checklist (mock mode)
 
 Run in the Extension Development Host (F5) with `agentcore.mock = true` and **AgentCore: Show Logs** open. *(Updated in Phase 7 for rounds 6d and 6e.)*

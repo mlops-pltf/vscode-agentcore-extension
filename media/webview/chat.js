@@ -175,8 +175,87 @@
     codeActions
   };
 
-  // An agent reply: header (avatar + name), optional status line, text, then a
-  // bar with the footer ("A2A · 1.8s · completed") and the reply's actions
+  // A tool call inside a reply (Phase 13): "Used `name` input", expandable to the
+  // input and result when there are any. step.open survives re-renders.
+  const STEP_VERB = { running: 'Running', success: 'Used', error: 'Failed', stopped: 'Stopped' };
+
+  function toolStep(step) {
+    const expandable = Boolean(step.input || step.result);
+    const box = el(expandable ? 'details' : 'div', 'tool-step');
+    box.dataset.status = step.status;
+    const head = el(expandable ? 'summary' : 'div', 'tool-head');
+    head.append(el('span', 'tool-icon'), el('span', 'tool-verb', STEP_VERB[step.status] || 'Used'),
+      el('code', 'tool-name', step.name || 'tool'));
+    if (step.input) head.appendChild(el('span', 'tool-input', step.input));
+    box.appendChild(head);
+    if (expandable) {
+      box.open = Boolean(step.open);
+      box.addEventListener('toggle', () => { step.open = box.open; });
+      if (step.input) box.append(el('div', 'tool-label', 'Input'), el('pre', 'tool-pre', step.input));
+      if (step.result) box.append(el('div', 'tool-label', step.status === 'error' ? 'Error' : 'Result'), el('pre', 'tool-pre', step.result));
+    }
+    return box;
+  }
+
+  // With tool calls, a reply is "working" (narration and steps up to the last
+  // tool call) and then the final answer (the text after it): the model's last
+  // turn, once all tool results are in. Without tool calls it's all answer.
+  function splitReply(reply) {
+    let lastTool = -1;
+    reply.segments.forEach((segment, i) => { if (segment.kind === 'tool') lastTool = i; });
+    return { work: reply.segments.slice(0, lastTool + 1), answer: reply.segments.slice(lastTool + 1) };
+  }
+
+  const textOf = (segments) => segments.filter((s) => s.kind === 'text').map((s) => s.text).join('');
+
+  // The final answer's text (for Copy reply)
+  function replyText(reply) {
+    return textOf(splitReply(reply).answer);
+  }
+
+  function renderSegments(segments) {
+    const content = document.createDocumentFragment();
+    for (const segment of segments) {
+      content.appendChild(segment.kind === 'text'
+        ? markdown.render(markdown.parse(segment.text), markdownHooks)
+        : toolStep(segment));
+    }
+    return content;
+  }
+
+  // "Working... (2 tools so far)" while the agent works; "Used 3 tools · 1 failed" after
+  function workSummary(reply) {
+    const steps = [...reply.steps.values()];
+    const count = `${steps.length} tool${steps.length === 1 ? '' : 's'}`;
+    if (!reply.finished) return `Working... (${count} so far)`;
+    const failed = steps.filter((s) => s.status === 'error').length;
+    const stopped = steps.filter((s) => s.status === 'stopped').length;
+    return [`Used ${count}`, failed && `${failed} failed`, stopped && `${stopped} stopped`].filter(Boolean).join(' · ');
+  }
+
+  // The collapsible "working" group: open while the agent works, folded when the
+  // reply is done (unless the user opened or closed it themselves)
+  function workGroup(reply, segments) {
+    const group = el('details', 'work-group');
+    group.dataset.state = reply.finished ? 'done' : 'working';
+    const head = el('summary', 'work-head');
+    head.append(el('span', 'work-icon'), el('span', 'work-summary', workSummary(reply)));
+    group.append(head, el('div', 'work-body'));
+    group.lastChild.appendChild(renderSegments(segments));
+    group.open = reply.workOpen;
+    group.addEventListener('toggle', () => {
+      // Setting .open while rendering also fires "toggle"; only the user's changes count
+      if (group.open !== reply.workOpen) {
+        reply.workOpen = group.open;
+        reply.workToggled = true;
+      }
+    });
+    return group;
+  }
+
+  // An agent reply: header (avatar + name), optional status line, the content
+  // (text and tool steps in the order they came), then a bar with the footer
+  // ("A2A · 1.8s · completed") and the reply's actions
   function createReply(container, agentName) {
     const bubble = appendMessage(container, '', 'agent');
     const head = el('div', 'agent-head');
@@ -184,7 +263,11 @@
     head.appendChild(el('span', 'name', agentName));
     bubble.appendChild(head);
 
-    const reply = { bubble, container, received: false, markdown: '', renderQueued: false };
+    // received: some text arrived; segments: [{kind: 'text', text} | {kind: 'tool', id, name, status, ...}]
+    const reply = {
+      bubble, container, received: false, segments: [], steps: new Map(), renderQueued: false,
+      finished: false, workOpen: true, workToggled: false  // the "working" group (workGroup)
+    };
     reply.status = el('div', 'status');
     reply.text = el('div', 'text');
     reply.bar = el('div', 'reply-bar');
@@ -202,17 +285,47 @@
   function renderReply(reply) {
     stopTimer(reply);
     reply.renderQueued = false;
-    reply.text.replaceChildren(markdown.render(markdown.parse(reply.markdown), markdownHooks));
+    const { work, answer } = splitReply(reply);
+    if (!work.length) {
+      reply.text.replaceChildren(renderSegments(answer));
+    } else {
+      const content = document.createDocumentFragment();
+      content.appendChild(workGroup(reply, work));
+      const answerBox = el('div', 'answer');
+      answerBox.appendChild(renderSegments(answer));
+      content.appendChild(answerBox);
+      reply.text.replaceChildren(content);
+    }
     scrollToBottom(reply.container);
   }
 
-  function addChunk(reply, text) {
-    reply.received = true;
-    reply.markdown += text;
+  function scheduleRender(reply) {
     if (!reply.renderQueued) {
       reply.renderQueued = true;
       nextFrame(() => { if (reply.renderQueued) renderReply(reply); });
     }
+  }
+
+  function addChunk(reply, text) {
+    reply.received = true;
+    const last = reply.segments[reply.segments.length - 1];
+    if (last && last.kind === 'text') last.text += text;
+    else reply.segments.push({ kind: 'text', text });
+    scheduleRender(reply);
+  }
+
+  // A tool step update {id, name, status, input, result}: a new step goes after
+  // the text so far; an update changes the step in place
+  function addTool(reply, step) {
+    const known = reply.steps.get(step.id);
+    if (known) {
+      Object.assign(known, { name: step.name || known.name, status: step.status, input: step.input || known.input, result: step.result || known.result });
+    } else {
+      const segment = { kind: 'tool', id: step.id, name: step.name, status: step.status, input: step.input, result: step.result, open: false };
+      reply.steps.set(step.id, segment);
+      reply.segments.push(segment);
+    }
+    scheduleRender(reply);
   }
 
   function setStatus(reply, text) {
@@ -227,7 +340,14 @@
   // cloudwatchUrl} is known; Retry when it failed
   function finishReply(reply, { footer, error, trace, rawJson, onRetry } = {}) {
     stopTimer(reply);
-    if (reply.received) {
+    // Steps that never got a result (stopped, failed or backend lost)
+    for (const step of reply.steps.values()) if (step.status === 'running') step.status = 'stopped';
+    // Fold the working group, unless the user chose, or there is no answer to show
+    reply.finished = true;
+    if (!reply.workToggled && splitReply(reply).answer.some((s) => s.kind === 'text' && s.text.trim())) {
+      reply.workOpen = false;
+    }
+    if (reply.segments.length) {
       renderReply(reply);
     } else {
       reply.text.textContent = '';
@@ -237,7 +357,7 @@
       reply.footer.textContent = footer;
       reply.footer.hidden = false;
     }
-    if (reply.received) reply.actions.appendChild(copyButton('Copy reply', () => reply.markdown));
+    if (reply.received && replyText(reply).trim()) reply.actions.appendChild(copyButton('Copy reply', () => replyText(reply)));
     if (rawJson) {
       reply.actions.appendChild(iconButton('json', 'Open raw JSON',
         () => options.onEditor('newFile', { text: rawJson, language: 'json' })));
@@ -269,5 +389,5 @@
     return parts.filter(Boolean).join(' · ');
   }
 
-  app.chat = { configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, setStatus, finishReply, footerText };
+  app.chat = { configure, initScroll, appendMessage, renderWelcome, createReply, addChunk, addTool, setStatus, finishReply, footerText };
 })(window.AgentCore);

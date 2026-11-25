@@ -27,7 +27,14 @@ class StreamFixturesTest(unittest.TestCase):
     def test_strands_stream_has_no_duplicate_text(self):
         emitter, meta = run(fixture_response("http/strands_stream.sse"))
         self.assertEqual(emitter.text, "Hello world!")
-        self.assertEqual([e["text"] for e in emitter.of("status")], ["Using tool: web_search"])
+        self.assertEqual(emitter.of("status"), [], "tool calls are steps now, not status lines")
+        # Partial input first (ignored), then the full input: one step, then its input
+        self.assertEqual([{k: v for k, v in e.items() if k not in ("type", "requestId")} for e in emitter.of("tool")], [
+            {"id": "t1", "name": "web_search", "status": "running"},
+            {"id": "t1", "name": "web_search", "status": "running", "input": '{"q": "x"}'},
+            # Strands' own tool-result message finishes it
+            {"id": "t1", "name": "web_search", "status": "success", "input": '{"q": "x"}', "result": "search results"},
+        ])
         self.assertEqual(meta, {"contentType": "text/event-stream"})
 
     def test_raw_bedrock_only_stream_falls_back_to_raw_events(self):
@@ -136,8 +143,8 @@ class MockRuntimeTest(unittest.TestCase):
         self.assertEqual(self.invoke("hi").text, expected)
 
     def test_tool(self):
-        self.assertEqual([e["text"] for e in self.invoke("tool please").of("status")],
-                         ["Using tool: web_search"])
+        steps = self.invoke("tool please").of("tool")
+        self.assertEqual([(e["name"], e["status"]) for e in steps], [("web_search", "running")])
 
     def test_json(self):
         self.assertTrue(self.invoke("json please").text.startswith("You said: 'json please'"))

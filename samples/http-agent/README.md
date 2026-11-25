@@ -2,17 +2,21 @@
 
 A small agent for **Amazon Bedrock AgentCore Runtime**, built with `BedrockAgentCoreApp` (the `bedrock-agentcore` SDK) and a [Strands](https://strandsagents.com) agent. Use it as a starting point, or to check the AgentCore Chat extension end to end.
 
-It streams its reply in the format the extension reads best ([docs/AGENT_REPLY_FORMAT.md](../../docs/AGENT_REPLY_FORMAT.md)):
+It streams its reply in the format the extension reads best ([docs/AGENT_REPLY_FORMAT.md](../../docs/AGENT_REPLY_FORMAT.md)): text as it arrives, and each **tool call as a step in between**, where it happened:
 
 ```
-data: {"current_tool_use": {"name": "current_time"}}
-data: {"data": "It is "}
-data: {"data": "10:42 UTC."}
+data: {"data": "Let me check the time."}
+data: {"current_tool_use": {"toolUseId": "t1", "name": "current_time"}}
+data: {"current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": {}}}
+data: {"tool_result": {"toolUseId": "t1", "status": "success", "content": "2026-11-25T10:42:07+00:00"}}
+data: {"data": " It is 10:42 UTC."}
 ```
+
+In the chat, that's the first sentence, then a "Used `current_time`" step (a spinner while it runs, then ✓; click it for the input and result), then the rest of the answer. The mapping from Strands' events is one function, `to_chat_events()` in `agent.py`: copy it into your own agent.
 
 - **Request**: `{"prompt": "..."}`, which is what the extension sends.
 - **Conversation**: one Strands agent per AgentCore session, so a chat remembers what was said until the user clicks **New chat** (which also stops the session).
-- **Tools**: `current_time` and `word_count`, to show the "Using tool: ..." status in the chat.
+- **Tools**: `current_time` and `word_count`, to show tool steps in the chat. Ask "What time is it, and how many words are in 'hello agent world'?" to see two.
 - **Answers in Markdown**: the system prompt asks for lists, tables and fenced code blocks, which the chat renders.
 - **Errors**: an exception becomes an `{"error": ..., "error_type": ...}` event (done by `BedrockAgentCoreApp`), shown in the chat as an error with Retry.
 

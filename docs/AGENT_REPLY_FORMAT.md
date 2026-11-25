@@ -19,15 +19,19 @@ The chat's session id comes in the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`
 `Content-Type: text/event-stream`. Each event is one `data:` line with JSON, followed by a blank line:
 
 ```
-data: {"current_tool_use": {"name": "web_search"}}
+data: {"data": "Let me look that up."}
 
-data: {"data": "Hello"}
+data: {"current_tool_use": {"toolUseId": "t1", "name": "web_search"}}
 
-data: {"data": " there, here is the answer."}
+data: {"current_tool_use": {"toolUseId": "t1", "name": "web_search", "input": {"query": "agentcore"}}}
+
+data: {"tool_result": {"toolUseId": "t1", "status": "success", "content": "3 results: ..."}}
+
+data: {"data": " Here is what I found."}
 
 ```
 
-With `BedrockAgentCoreApp`, an `async def` entrypoint that `yield`s dicts produces exactly this:
+With `BedrockAgentCoreApp`, an `async def` entrypoint that `yield`s dicts produces exactly this. For a Strands agent, the [sample agent](../samples/http-agent/agent.py)'s `to_chat_events()` does the mapping; copy it:
 
 ```python
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -36,20 +40,22 @@ app = BedrockAgentCoreApp()
 
 @app.entrypoint
 async def invoke(payload, context):
-    async for event in my_agent.stream_async(payload["prompt"]):   # e.g. a Strands Agent
-        if isinstance(event.get("data"), str):
-            yield {"data": event["data"]}
-        elif isinstance(event.get("current_tool_use"), dict):
-            yield {"current_tool_use": {"name": event["current_tool_use"].get("name")}}
+    started = set()
+    async for event in my_agent.stream_async(payload["prompt"]):   # a Strands Agent
+        for chat_event in to_chat_events(event, started):          # from samples/http-agent/agent.py
+            yield chat_event
 ```
 
-Forwarding only these two keys is cleaner than yielding raw Strands events, which carry Python objects that don't serialize to JSON cleanly.
+Forwarding only these keys is cleaner than yielding raw Strands events, which carry Python objects that don't serialize to JSON cleanly.
+
+**The final answer** is the text after the last tool call (the model's last turn, once all tool results are in). The chat shows the text and tool steps before it as a "working" group that folds up when the reply is done, and the final answer below it. So: let the model narrate and call tools as it likes, and make sure its last turn is the complete answer.
 
 | Event | What the chat does |
 |---|---|
 | `{"data": "<piece of text>"}` | Shows it at once. **The main one.** |
 | `"<piece of text>"` (a JSON string) | Shows it at once. |
-| `{"current_tool_use": {"name": "x"}}` | Status line "Using tool: x" (once per tool). |
+| `{"current_tool_use": {"toolUseId": "t1", "name": "x"}}` | A **tool step** in the reply, where the call happened: "Running `x`" with a spinner. Repeat events for the same `toolUseId` update it; an `input` (an object, or JSON text once complete) shows as a short summary. |
+| `{"tool_result": {"toolUseId": "t1", "status": "success" or "error", "content": "..."}}` | Finishes that step: ✓ "Used `x`" or ✕ "Failed `x`"; the step expands to show the input and the result (shortened). Strands' own result message (`{"message": {"role": "user", "content": [{"toolResult": ...}]}}`) works too. |
 | `{"result": "<full text>"}` or `{"result": {"role": "assistant", "content": [{"text": "..."}]}}` | The complete answer. **Used only if nothing was streamed**, so it never repeats. |
 | `{"event": {"contentBlockDelta": {"delta": {"text": "..."}}}}` | Raw Bedrock events; used only if no `data` events came (Strands sends both). |
 | `{"delta": {"text": "..."}}`, `{"text": ...}`, `{"content": ...}`, `{"output": ...}`, `{"response": ...}`, `{"answer": ...}`, `{"completion": ...}` | Streamed text as well. |

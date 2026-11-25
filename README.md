@@ -7,6 +7,7 @@ Chat with your **Amazon Bedrock AgentCore** agents from inside VS Code, using yo
 - **Your agents, listed for you.** Pick an AWS profile and the chat lists the AgentCore runtimes that are ready in that account, with their protocol detected (MCP and AG-UI runtimes are hidden: they aren't chat agents). With many agents, **search** the list by name or description.
 - **Ask another agent with @.** Start a message with `@agent-name` to send just that message to another agent, without leaving the chat. Each agent keeps its own conversation.
 - **HTTP and A2A.** A toggle under the message box switches protocol per agent; it starts on the detected one (marked with a dot) and remembers your choice.
+- **Tool calls you can follow, then the answer**: while the agent works, its tool calls appear as steps (running, then done or failed, expandable to input and result). When it's done, the work folds into one line ("Used 3 tools") and the final answer stands on its own.
 - **Streaming replies with Markdown**: headings, lists, tables, quotes, links and code blocks with a language label.
 - **Code blocks you can use**: Copy, Insert at Cursor, Open in New File, and for shell commands Insert into Terminal (it never runs the command for you).
 - **A2A Agent Cards**: an A2A agent's welcome screen shows its version, skills and example prompts; streaming is switched on automatically when the agent supports it.
@@ -118,6 +119,7 @@ Set `agentcore.mock` to `true`. The chat shows a **MOCK** badge and lists three 
 | `slow` | one second between streamed lines, or 3 seconds before a one-piece answer (try Stop and the timer) |
 | `json` | HTTP agent answers with one JSON body instead of a stream |
 | `tool` | the agent reports a tool call first |
+| `tools` | HTTP: text with three tool calls in between (two succeed, one fails), shown as steps |
 | `input` | A2A: the agent asks a follow-up question; your next message answers it |
 | `fail` | A2A: the task fails |
 | `rpcerror` | A2A: the agent returns a JSON-RPC error |

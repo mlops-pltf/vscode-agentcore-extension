@@ -56,6 +56,10 @@ class Emitter:
     def status(self, text: str) -> None:
         self._send("status", text=text)
 
+    def tool(self, step: dict) -> None:
+        # A tool call step shown inside the reply (tool_steps.py)
+        self._send("tool", **step)
+
     def done(self, **meta) -> None:
         self._send("done", meta=meta)
 

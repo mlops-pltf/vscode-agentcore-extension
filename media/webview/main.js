@@ -332,6 +332,10 @@
       const reply = requests.get(msg.requestId);
       if (reply) chatView.addChunk(reply, msg.text);
     },
+    tool(msg) {
+      const reply = requests.get(msg.requestId);
+      if (reply) chatView.addTool(reply, msg);
+    },
     status(msg) {
       const reply = requests.get(msg.requestId);
       if (reply) chatView.setStatus(reply, msg.text);
@@ -343,7 +347,7 @@
       const waiting = meta.taskState === 'input-required' || meta.taskState === 'auth-required';
       // Keep "Agent is waiting for your input"; drop progress lines like "Thinking..."
       if (!waiting) reply.status.hidden = true;
-      if (!reply.received) reply.text.textContent = meta.state === 'cancelled' ? '(cancelled)' : '(empty reply)';
+      if (!reply.received && !reply.segments.length) reply.text.textContent = meta.state === 'cancelled' ? '(cancelled)' : '(empty reply)';
     },
     error(msg) {
       if (requests.has(msg.requestId)) {

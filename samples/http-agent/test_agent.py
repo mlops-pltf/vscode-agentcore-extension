@@ -35,12 +35,19 @@ class FakeStrandsAgent:
         self.fail = fail
 
     async def stream_async(self, prompt):
+        # The order Strands uses: text, the tool call being written (input
+        # incomplete), the full call, the tool's result, then more text
         self.prompts.append(prompt)
         yield {"init_event_loop": True}
-        yield {"current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": {}}}
-        yield {"current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": {}}}
+        yield {"data": "Let me check. ", "agent": object()}  # Strands events carry objects that aren't JSON
+        yield {"type": "tool_use_stream", "current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": ""}}
+        yield {"type": "tool_use_stream", "current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": '{"tz'}}
+        yield {"message": {"role": "assistant", "content": [
+            {"text": "Let me check. "}, {"toolUse": {"toolUseId": "t1", "name": "current_time", "input": {"tz": "UTC"}}}]}}
+        yield {"message": {"role": "user", "content": [
+            {"toolResult": {"toolUseId": "t1", "status": "success", "content": [{"text": "10:42"}]}}]}}
         yield {"event": {"contentBlockDelta": {"delta": {"text": "Hello "}}}}
-        yield {"data": "Hello ", "agent": object()}  # Strands events carry objects that aren't JSON
+        yield {"data": "Hello "}
         if self.fail:
             raise RuntimeError("model throttled")
         yield {"data": "**world**\n\n| a | b |\n|---|---|\n| 1 | 2 |"}
@@ -75,11 +82,23 @@ class SampleAgentTest(unittest.TestCase):
     def test_streams_what_the_extension_reads(self):
         content_type, body = invoke_raw(self.client, {"prompt": "hi"})
         self.assertEqual(content_type, "text/event-stream")
-        self.assertEqual(body.decode().split("\n\n")[0], 'data: {"current_tool_use": {"name": "current_time"}}')
+        self.assertEqual(body.decode().split("\n\n")[:4], [
+            'data: {"data": "Let me check. "}',
+            'data: {"current_tool_use": {"toolUseId": "t1", "name": "current_time"}}',
+            'data: {"current_tool_use": {"toolUseId": "t1", "name": "current_time", "input": {"tz": "UTC"}}}',
+            'data: {"tool_result": {"toolUseId": "t1", "status": "success", "content": "10:42"}}',
+        ])
 
         emitter = read_with_extension(content_type, body)
-        self.assertEqual(emitter.text, "Hello **world**\n\n| a | b |\n|---|---|\n| 1 | 2 |")
-        self.assertEqual([e["text"] for e in emitter.of("status")], ["Using tool: current_time"])
+        self.assertEqual(emitter.text, "Let me check. Hello **world**\n\n| a | b |\n|---|---|\n| 1 | 2 |")
+        steps = [(e["name"], e["status"], e.get("input"), e.get("result")) for e in emitter.of("tool")]
+        self.assertEqual(steps, [("current_time", "running", None, None),
+                                 ("current_time", "running", '{"tz": "UTC"}', None),
+                                 ("current_time", "success", '{"tz": "UTC"}', "10:42")])
+        # The step comes between the two pieces of text, where it happened
+        kinds = [e["type"] for e in emitter.events if e["type"] in ("chunk", "tool")]
+        self.assertEqual(kinds[:2], ["chunk", "tool"])
+        self.assertEqual(kinds[-1], "chunk")
         self.assertEqual(self.fakes[0].prompts, ["hi"])
 
     def test_one_agent_per_session(self):
@@ -101,13 +120,13 @@ class SampleAgentTest(unittest.TestCase):
         with self.assertRaises(AgentCoreError) as raised:
             handle(HttpProtocol(), fake_response(body, content_type), emitter)
         self.assertEqual(str(raised.exception), "Agent error: RuntimeError: model throttled")
-        self.assertEqual(emitter.text, "Hello ", "text before the error is kept")
+        self.assertEqual(emitter.text, "Let me check. Hello ", "text before the error is kept")
 
     def test_echo_mode_needs_no_model(self):
         with mock.patch.dict(os.environ, {"ECHO_MODE": "1"}):
             emitter = read_with_extension(*invoke_raw(self.client, {"prompt": "ping"}))
         self.assertEqual(emitter.text, agent.ECHO_REPLY.format(prompt="ping"))
-        self.assertEqual([e["text"] for e in emitter.of("status")], ["Using tool: echo"])
+        self.assertEqual([(e["name"], e["status"]) for e in emitter.of("tool")], [("echo", "running"), ("echo", "success")])
         self.assertEqual(self.fakes, [])
 
     def test_health_check(self):

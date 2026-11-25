@@ -237,6 +237,37 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
   border-radius: 4px;
   background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
 }
+/* The "working" group: narration and tool steps before the final answer */
+.work-group { margin: 0 0 8px; }
+.work-head { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; }
+.work-head::-webkit-details-marker { display: none; }
+.work-head::after { content: "\203A"; opacity: 0.7; }
+.work-group[open] > .work-head::after { content: "\2304"; }
+.work-icon { flex-shrink: 0; width: 12px; height: 12px; }
+.work-group[data-state="working"] .work-icon { border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tool-spin 1.4s linear infinite; }
+.work-group[data-state="done"] .work-icon::before { content: "\2699"; font-size: 12px; line-height: 12px; }
+.work-body { margin: 4px 0 0 5px; padding: 0 0 0 12px; border-left: 2px solid var(--border); color: var(--muted); }
+.work-body p { margin-bottom: 6px; }
+
+/* Tool calls inside a reply (Phase 13) */
+.tool-step { margin: 2px 0 8px; font-size: 12px; color: var(--muted); }
+.tool-head { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 0; }
+summary.tool-head { cursor: pointer; list-style: none; }
+summary.tool-head::-webkit-details-marker { display: none; }
+summary.tool-head::after { content: "\203A"; margin-left: 2px; opacity: 0.7; }
+details[open] > summary.tool-head::after { content: "\2304"; }
+.tool-step .tool-name { font-size: 11px; color: var(--vscode-foreground); }
+.tool-input { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; opacity: 0.8; }
+.tool-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; font-size: 11px; }
+.tool-step[data-status="running"] .tool-icon { border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tool-spin 1.4s linear infinite; }
+.tool-step[data-status="success"] .tool-icon::before { content: "\2713"; color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, currentColor)); }
+.tool-step[data-status="error"] .tool-icon::before { content: "\2715"; color: var(--vscode-errorForeground); }
+.tool-step[data-status="stopped"] .tool-icon::before { content: "\2013"; }
+.tool-step[data-status="error"] .tool-verb { color: var(--vscode-errorForeground); }
+.tool-label { margin: 6px 0 2px 18px; font-size: 11px; font-weight: 600; }
+.tool-pre { margin: 0 0 0 18px; padding: 6px 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; border-radius: var(--radius); background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1)); color: var(--vscode-foreground); }
+@keyframes tool-spin { to { transform: rotate(360deg); } }
+
 .table-wrap { margin: 0 0 10px; overflow-x: auto; }
 .text table { border-collapse: collapse; font-size: 12px; }
 .text th, .text td { padding: 4px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
@@ -453,5 +484,6 @@ select option { background: var(--vscode-dropdown-background); color: var(--vsco
 }
 @media (prefers-reduced-motion: reduce) {
   .typing span { animation-name: typing-fade; }
+  .tool-step[data-status="running"] .tool-icon, .work-group[data-state="working"] .work-icon { animation: typing-fade 1.2s infinite; }
   .msg { animation: none; }
 }

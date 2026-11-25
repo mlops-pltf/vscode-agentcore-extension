@@ -10,6 +10,8 @@ Keywords in the prompt pick a scenario:
          (A2A message/send, HTTP json); to try cancelling and the timer
   error  the agent container fails (RuntimeClientError)
   tool      the agent reports a tool call before answering
+  tools     HTTP: text and three tool calls in between (success, success, failure),
+            shown as steps inside the reply (Phase 13)
   input     A2A task stops in the input-required state (answer it to continue)
   fail      A2A task ends in the failed state
   rpcerror  A2A agent returns a JSON-RPC error
@@ -222,6 +224,8 @@ def _invoke(agent_arn: str, payload: bytes) -> dict:
         return _json(_a2a_send_result(request, reply, words), one_piece_delay)
     if "json" in words:
         return _json({"result": {"role": "assistant", "content": [{"text": reply}]}}, one_piece_delay)
+    if "tools" in words:
+        return _sse(_tool_steps_events(), delay)
     return _sse(_http_stream_events(reply, words), delay)
 
 
@@ -230,6 +234,9 @@ def _invoke(agent_arn: str, payload: bytes) -> dict:
 def _sse(events: List[dict], delay: float) -> dict:
     lines = []
     for event in events:
+        if isinstance(event, tuple):  # ("pause", seconds): SSE comment lines, ignored by readers
+            lines.extend([b": working"] * max(1, round(event[1] / delay)))
+            continue
         lines.append(b"data: " + json.dumps(event).encode("utf-8"))
         lines.append(b"")  # blank line ends an SSE event
     return {"contentType": "text/event-stream", "statusCode": 200,
@@ -254,6 +261,37 @@ def _http_stream_events(reply: str, words: str) -> List[dict]:
         events.append({"data": token})
     events.append({"result": reply})
     return events
+
+
+def _tool_steps_events() -> list:
+    """Text with tool calls in between, in the shapes the sample agent sends
+    (and one Strands-style result message), with pauses while tools "run"."""
+    def text(words: str) -> List[dict]:
+        return [{"data": token} for token in _tokens(words)]
+
+    def call(tool_id: str, name: str, tool_input: dict) -> List[dict]:
+        return [
+            {"current_tool_use": {"toolUseId": tool_id, "name": name, "input": json.dumps(tool_input)[:6]}},  # still being written
+            {"current_tool_use": {"toolUseId": tool_id, "name": name, "input": tool_input}},
+            ("pause", 0.9),
+        ]
+
+    return [
+        *text("Let me check the time first."),
+        *call("tool-1", "current_time", {"timezone": "UTC"}),
+        {"tool_result": {"toolUseId": "tool-1", "status": "success", "content": "2026-11-25T10:42:07Z"}},
+        *text(" It's **10:42 UTC**. Now I'll search the docs for streaming."),
+        *call("tool-2", "search_docs", {"query": "agentcore streaming", "limit": 3}),
+        {"message": {"role": "user", "content": [{"toolResult": {
+            "toolUseId": "tool-2", "status": "success",
+            "content": [{"text": "3 results: Streaming responses; Invoke an agent; Response formats"}]}}]}},
+        *text("\n\nI found three pages:\n\n- Streaming responses\n- Invoke an agent\n- Response formats\n\n"
+              "Last, the change ticket."),
+        *call("tool-3", "lookup_ticket", {"id": "CHG-1234"}),
+        {"tool_result": {"toolUseId": "tool-3", "status": "error", "content": "Ticket service timed out after 5s"}},
+        *text(" The ticket service didn't answer, so I can't confirm the change status yet."),
+        {"result": "(final answer, already streamed)"},
+    ]
 
 
 # ---------- A2A (JSON-RPC 2.0, assumptions A5-A8) ----------
