@@ -271,7 +271,6 @@
       ? 'Choosing agents by typing @ (click to use the picker instead)'
       : 'Choosing agents with the picker (click to choose by typing @ instead)';
     document.querySelector('.composer').classList.toggle('mode-mention', mention);
-    $('composerHint').textContent = mention ? '@ agent · ⏎ send · ⇧⏎ new line' : '⏎ send · ⇧⏎ new line';
     if (mention) $('agentBtn').title = 'Type @ to choose another agent';
     else pickerBox?.sync();  // restores the agent's own tooltip
     updatePlaceholder();
