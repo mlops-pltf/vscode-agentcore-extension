@@ -1,0 +1,6 @@
+: keep-alive comment
+event: message
+id: 1
+data: line one
+data: line two
+

@@ -1,20 +1,26 @@
 {
   "name": "agentcore-chat",
-  "displayName": "agentcore-chat",
-  "description": "Direct chat with AWS AgentCore agents",
+  "displayName": "AgentCore Chat",
+  "description": "Chat with your Amazon Bedrock AgentCore agents (HTTP and A2A) from VS Code",
   "publisher": "internal-tools",
-  "version": "0.0.1",
+  "version": "0.9.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mlops-pltf/vscode-agentcore-extension.git"
+  },
+  "license": "MIT",
   "engines": {
-    "vscode": "^1.146.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat"
   ],
   "activationEvents": [],
   "main": "./extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "agentcore-sidebar",
           "title": "AgentCore Chat",
@@ -40,29 +46,108 @@
           "default": "python3",
           "description": "Path to Python interpreter with boto3 installed"
         },
-        "agentcore.registryId": {
+        "agentcore.mock": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use a built-in **mock** AgentCore instead of AWS. For local development and demos; replies are fake."
+        },
+        "agentcore.region": {
           "type": "string",
-          "default": "",
-          "description": "Optional AWS Agent Registry ID"
+          "default": "eu-central-1",
+          "markdownDescription": "AWS region for AgentCore. Defaults to `eu-central-1`; clear it to use the region from your AWS profile instead."
+        },
+        "agentcore.a2aStreaming": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Stream when the agent's Agent Card says it supports streaming, otherwise send",
+            "Always use message/stream",
+            "Always use message/send"
+          ],
+          "default": "auto",
+          "markdownDescription": "How to call **A2A** agents: `message/stream` (live status and streamed text) or `message/send` (one answer). `auto` follows the agent's Agent Card (needs `bedrock-agentcore:GetAgentCard`; without it, `auto` sends)."
+        },
+        "agentcore.history": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Save chats on this computer so they can be reopened and continued from **History**. Turning it off stops saving new chats; saved ones stay until you delete them (History → Clear all)."
+        },
+        "agentcore.jsonReplies": {
+          "type": "string",
+          "enum": [
+            "full",
+            "text",
+            "raw"
+          ],
+          "enumDescriptions": [
+            "The main text, then every other field as readable Markdown (lists, tables)",
+            "Only the main text (message, result, response...)",
+            "The whole reply as a JSON block"
+          ],
+          "default": "full",
+          "markdownDescription": "How to show agent replies that are **JSON**. Also used for A2A data parts and the extra fields of a stream's final event."
+        },
+        "agentcore.jsonHiddenFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Field names to leave out when showing JSON replies as Markdown (any level, case-insensitive), in addition to the built-in ones (`role`, `usage`, `metrics`, token counts, trace/request/session ids, stop reason, latency)."
+        },
+        "agentcore.debugRawResponses": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log every raw response line to the **AgentCore Chat** Output channel. Useful for capturing real responses as test fixtures; may log sensitive content."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "agentcore.openChat",
+        "title": "Open Chat",
+        "category": "AgentCore"
+      },
+      {
+        "command": "agentcore.showLogs",
+        "title": "Show Logs",
+        "category": "AgentCore"
+      },
+      {
+        "command": "agentcore.restartBackend",
+        "title": "Restart Backend",
+        "category": "AgentCore"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
-    "pretest": "npm run lint",
-    "test": "vscode-test"
+    "test": "npm run lint && npm run test:py && npm run test:js",
+    "test:js": "node --test --test-concurrency=1 --test-timeout=120000 --test-force-exit test/node/*.spec.js",
+    "test:py": ".venv/bin/python -m unittest discover -s python/tests -t python",
+    "test:sample": "samples/http-agent/.venv/bin/python -m unittest discover -s samples/http-agent -p \"test_*.py\""
   },
   "devDependencies": {
-    "@types/vscode": "^1.146.0",
-    "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
+    "@types/vscode": "~1.109.0",
     "eslint": "^10.5.0",
-    "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
+    "globals": "^16.5.0",
+    "jsdom": "^24.1.3"
   },
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
-  }
+  },
+  "keywords": [
+    "aws",
+    "bedrock",
+    "agentcore",
+    "agents",
+    "a2a",
+    "chat"
+  ]
 }

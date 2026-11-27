@@ -1,0 +1,46 @@
+# Push a tag like v0.9.0 (matching package.json) to build and publish a
+# GitHub Release with the .vsix attached. See RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Package
+        run: npx --yes @vscode/vsce@3 package --out "agentcore-chat-$VERSION.vsix"
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/changelog-section.js "$VERSION" > release-notes.md
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 0.x versions are betas
+          prerelease=""
+          case "$VERSION" in 0.*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "agentcore-chat-$VERSION.vsix" \
+            --title "AgentCore Chat $VERSION" --notes-file release-notes.md $prerelease

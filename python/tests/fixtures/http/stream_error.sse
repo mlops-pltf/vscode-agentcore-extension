@@ -1,0 +1,6 @@
+data: "Looking that up"
+
+data: " now..."
+
+data: {"error": "model throttled", "error_type": "ThrottlingException", "message": "An error occurred during streaming"}
+

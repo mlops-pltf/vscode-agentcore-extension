@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": "r1", "result": {"kind": "message", "role": "agent", "messageId": "m1", "parts": [{"kind": "text", "text": "Report:"}, {"kind": "data", "data": {"rows": 2}}, {"kind": "file", "file": {"name": "report.csv", "uri": "s3://bucket/report.csv", "mimeType": "text/csv"}}]}}

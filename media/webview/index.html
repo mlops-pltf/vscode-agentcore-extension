@@ -1,0 +1,104 @@
+<!--
+  AgentCore Chat panel markup. extension.js (_getHtml) fills in the placeholders
+  written in double braces: cspSource, nonce, mainCss/domJs/markdownJs/stepsJs/chatJs/historyJs/pickerJs/mentionsJs/mainJs (webview URIs),
+  and init (starting values as JSON).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';">
+<link rel="stylesheet" href="{{mainCss}}">
+</head>
+<body>
+  <header class="toolbar">
+    <span class="select-wrap"><select id="profileSelect" title="AWS profile" aria-label="AWS profile"><option value="">Loading profiles...</option></select></span>
+    <span id="mockBadge" class="badge" title="Replies come from the built-in mock (setting agentcore.mock)" hidden>MOCK</span>
+    <button id="historyBtn" class="icon-btn" title="History" aria-label="History">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.5H5M8 5v3l2 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button id="refreshBtn" class="icon-btn" title="Refresh agents" aria-label="Refresh agents">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button id="newChatBtn" class="icon-btn" title="New chat" aria-label="New chat">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+
+  <div id="agentsNote" class="note" hidden></div>
+  <div id="ssoBanner">
+    <span>SSO token expired for this profile.</span>
+    <button id="ssoLoginBtn">Run aws sso login</button>
+  </div>
+  <div id="bridgeBanner" class="banner" hidden>
+    <span id="bridgeText"></span>
+    <button id="bridgeRestartBtn">Restart</button>
+    <button id="bridgeLogsBtn" class="secondary">Show Logs</button>
+  </div>
+  <div id="switchNotice" class="notice" hidden>
+    <span id="switchText"></span>
+    <button id="switchYesBtn">Switch</button>
+    <button id="switchNoBtn" class="secondary">Cancel</button>
+  </div>
+
+  <div class="chat-area">
+    <main id="chat"></main>
+    <!-- Saved chats (Phase 14), shown instead of the chat while open -->
+    <section id="historyView" aria-label="History" hidden></section>
+    <button id="jumpBtn" class="jump secondary" title="Jump to latest" hidden>↓ Jump to latest</button>
+  </div>
+
+  <div class="composer">
+    <!-- Searchable agent list (picker.js), opened by the agent chip; shown above the composer -->
+    <div id="agentPicker" class="picker" hidden>
+      <input id="agentSearch" type="text" placeholder="Search agents..." aria-label="Search agents"
+             role="combobox" aria-controls="agentList" aria-expanded="true" autocomplete="off" spellcheck="false">
+      <ul id="agentList" role="listbox" aria-label="Agents"></ul>
+    </div>
+    <!-- "@agent" list (mentions.js), opened by typing @ at the start of the message -->
+    <div id="mentionPopup" class="picker mentions" hidden>
+      <div class="picker-head">Ask another agent</div>
+      <ul id="mentionList" role="listbox" aria-label="Agents"></ul>
+    </div>
+    <div id="mentionNote" class="note warn" role="status" hidden></div>
+    <!-- The mirror sits behind the transparent textarea to highlight an @mention -->
+    <div class="input-wrap">
+      <div id="promptMirror" class="mirror" aria-hidden="true"></div>
+      <textarea id="promptInput" rows="1" placeholder="Ask an agent..." aria-label="Message"></textarea>
+    </div>
+    <div class="composer-footer">
+      <!-- Choose agents with the picker (off) or by typing @ (on); main.js, Phase 15 -->
+      <button id="chooserBtn" class="chooser" aria-pressed="false" aria-label="Choose agents by typing @">@</button>
+      <div class="agent-chip">
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7.5" width="15" height="10" rx="3"/><path d="M12 4.5v3"/><path d="M9.5 12.5h.01M14.5 12.5h.01" stroke-width="2.6"/></svg>
+        <!-- The select holds the agents and the choice; picker.js shows it as a searchable list -->
+        <select id="agentSelect" aria-label="Agent" hidden><option value="">Select profile first...</option></select>
+        <button id="agentBtn" class="agent-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Agent"><span id="agentName" class="name"></span></button>
+      </div>
+      <div id="protocolToggle" class="segmented" role="group" aria-label="Agent protocol">
+        <button data-protocol="HTTP" aria-pressed="true">HTTP</button>
+        <button data-protocol="A2A" aria-pressed="false">A2A</button>
+      </div>
+      <span class="grow"></span>
+      <!-- One action spot: arrow to send, square to stop (main.js shows one at a time) -->
+      <button id="sendBtn" class="icon-btn" title="Send (Enter)" aria-label="Send">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="stopBtn" class="icon-btn secondary" title="Stop (Esc)" aria-label="Stop" disabled hidden>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script nonce="{{nonce}}" id="init" type="application/json">{{init}}</script>
+  <!-- Classic scripts sharing window.AgentCore, loaded in dependency order -->
+  <script nonce="{{nonce}}" src="{{domJs}}"></script>
+  <script nonce="{{nonce}}" src="{{markdownJs}}"></script>
+  <script nonce="{{nonce}}" src="{{stepsJs}}"></script>
+  <script nonce="{{nonce}}" src="{{chatJs}}"></script>
+  <script nonce="{{nonce}}" src="{{historyJs}}"></script>
+  <script nonce="{{nonce}}" src="{{pickerJs}}"></script>
+  <script nonce="{{nonce}}" src="{{mentionsJs}}"></script>
+  <script nonce="{{nonce}}" src="{{mainJs}}"></script>
+</body>
+</html>

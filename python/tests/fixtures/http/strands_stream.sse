@@ -1,0 +1,24 @@
+data: {"init_event_loop": true}
+
+data: {"start": true}
+
+data: {"start_event_loop": true}
+
+data: {"current_tool_use": {"toolUseId": "t1", "name": "web_search", "input": ""}}
+
+data: {"current_tool_use": {"toolUseId": "t1", "name": "web_search", "input": "{\"q\": \"x\"}"}}
+
+data: {"message": {"role": "user", "content": [{"toolResult": {"toolUseId": "t1", "content": [{"text": "search results"}]}}]}}
+
+data: {"event": {"contentBlockDelta": {"delta": {"text": "Hello "}}}}
+
+data: {"data": "Hello ", "delta": {"text": "Hello "}}
+
+data: {"event": {"contentBlockDelta": {"delta": {"text": "world!"}}}}
+
+data: {"data": "world!", "delta": {"text": "world!"}}
+
+data: {"message": {"role": "assistant", "content": [{"text": "Hello world!"}]}}
+
+data: {"result": "Hello world!"}
+

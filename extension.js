@@ -1,301 +1,58 @@
-const vscode = require('vscode');
-const cp = require('child_process');
+// AgentCore Chat: wires the pieces together and registers commands.
+//   src/chatView.js     the chat panel (webview view)
+//   src/pythonBridge.js runs and supervises python/bridge.py
+//   src/pythonEnv.js    finds or creates the Python environment
+//   src/settings.js     reads the agentcore.* settings
 const path = require('path');
-const fs = require('fs');
-const readline = require('readline');
-const crypto = require('crypto');
+const vscode = require('vscode');
+const { ChatViewProvider } = require('./src/chatView');
+const { PythonBridge } = require('./src/pythonBridge');
+const { resolvePython } = require('./src/pythonEnv');
+const { readSettings } = require('./src/settings');
+
+let bridge;
 
 function activate(context) {
-  const provider = new AgentCoreViewProvider(context);
+  const log = vscode.window.createOutputChannel('AgentCore Chat', { log: true });
+  let view;
+  bridge = new PythonBridge({
+    extensionDir: context.extensionUri.fsPath,
+    findPython: () => resolvePython(context),
+    getSettings: readSettings,
+    log,
+    onMessage: (message) => view.post(message),
+    onState: (state) => view.post({ type: 'bridge', state }),
+    // Chat history files (python/agentcore/history.py), in VS Code's storage for this extension
+    env: { AGENTCORE_HISTORY_DIR: path.join(context.globalStorageUri.fsPath, 'history') }
+  });
+  view = new ChatViewProvider({ extensionUri: context.extensionUri, bridge, getSettings: readSettings, log });
+
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('agentcoreChatView', provider, {
+    log,
+    bridge,
+    vscode.window.registerWebviewViewProvider('agentcoreChatView', view, {
       webviewOptions: { retainContextWhenHidden: true }
+    }),
+    // Works wherever the user has put the view (they can drag it to the left side)
+    vscode.commands.registerCommand('agentcore.openChat', () =>
+      vscode.commands.executeCommand('agentcoreChatView.focus')
+    ),
+    vscode.commands.registerCommand('agentcore.showLogs', () => log.show()),
+    vscode.commands.registerCommand('agentcore.restartBackend', () => bridge.restart()),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (!event.affectsConfiguration('agentcore')) return;
+      log.info('Settings changed: ' + JSON.stringify(readSettings()));
+      if (event.affectsConfiguration('agentcore.pythonPath')) {
+        bridge.restart();
+      }
+      // The panel reloads the agent list if mock mode or region changed
+      view.post({ type: 'settings', data: readSettings() });
     })
   );
 }
 
-class AgentCoreViewProvider {
-  constructor(context) {
-    this._context = context;
-    this._extensionUri = context.extensionUri;
-    this._view = undefined;
-    this._pyProcess = undefined;
-  }
-
-  async resolveWebviewView(webviewView) {
-    this._view = webviewView;
-    webviewView.webview.options = { enableScripts: true };
-    webviewView.webview.html = this._getHtml();
-
-    await this._startPythonBridge();
-
-    webviewView.webview.onDidReceiveMessage((msg) => {
-      if (msg.type === 'ssoLogin') {
-        const terminal = vscode.window.createTerminal(`AWS SSO (${msg.profile})`);
-        terminal.show();
-        terminal.sendText(`aws sso login --profile ${msg.profile}`);
-        return;
-      }
-      if (msg.type === 'newSession') {
-        this._view?.webview.postMessage({ type: 'sessionReset', sessionId: crypto.randomUUID() });
-        return;
-      }
-      const config = vscode.workspace.getConfiguration('agentcore');
-      if (msg.action === 'list_agents') {
-        msg.registryId = config.get('registryId') || undefined;
-      }
-      this._sendToPython(msg);
-    });
-
-    webviewView.onDidDispose(() => {
-      this._pyProcess?.kill();
-    });
-  }
-
-  async _ensurePythonEnv() {
-    const config = vscode.workspace.getConfiguration('agentcore');
-    const customPython = config.get('pythonPath');
-    const isWin = process.platform === 'win32';
-
-    // 1. Respect explicit user override if set
-    if (customPython && customPython !== 'python3') {
-      return customPython;
-    }
-
-    // 2. Check local .venv (for local development)
-    const localVenv = path.join(
-      this._extensionUri.fsPath,
-      '.venv',
-      isWin ? 'Scripts' : 'bin',
-      isWin ? 'python.exe' : 'python'
-    );
-    if (fs.existsSync(localVenv)) {
-      return localVenv;
-    }
-
-    // 3. Auto-bootstrap .venv in VS Code global storage for end users
-    const storageDir = this._context.globalStorageUri.fsPath;
-    const managedVenvDir = path.join(storageDir, 'venv');
-    const managedPython = path.join(
-      managedVenvDir,
-      isWin ? 'Scripts' : 'bin',
-      isWin ? 'python.exe' : 'python'
-    );
-
-    if (fs.existsSync(managedPython)) {
-      return managedPython;
-    }
-
-    const basePython = isWin ? 'python' : 'python3';
-    const reqPath = path.join(this._extensionUri.fsPath, 'python', 'requirements.txt');
-
-    return await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'AgentCore Chat: Setting up Python environment (first-time setup)...',
-        cancellable: true
-      },
-      () =>
-        new Promise((resolve, reject) => {
-          fs.mkdirSync(storageDir, { recursive: true });
-          const cmd = `"${basePython}" -m venv "${managedVenvDir}" && "${managedPython}" -m pip install --upgrade pip -q && "${managedPython}" -m pip install -r "${reqPath}" -q`;
-          cp.exec(cmd, (err, _stdout, stderr) => {
-            if (err) {
-              vscode.window.showErrorMessage(
-                `AgentCore Chat setup failed (Python 3.9+ required): ${stderr || err.message}`
-              );
-              reject(err);
-            } else {
-              resolve(managedPython);
-            }
-          });
-        })
-    );
-  }
-
-  async _startPythonBridge() {
-    let pythonPath;
-    try {
-      pythonPath = await this._ensurePythonEnv();
-    } catch {
-      return;
-    }
-
-    const scriptPath = path.join(this._extensionUri.fsPath, 'python', 'bridge.py');
-    this._pyProcess = cp.spawn(pythonPath, [scriptPath]);
-
-    if (this._pyProcess.stdout) {
-      const rl = readline.createInterface({ input: this._pyProcess.stdout });
-      rl.on('line', (line) => {
-        try {
-          const parsed = JSON.parse(line);
-          this._view?.webview.postMessage(parsed);
-        } catch (e) {
-          console.error('Invalid JSON from Python:', line);
-        }
-      });
-    }
-
-    this._pyProcess.stderr?.on('data', (data) => {
-      console.error(`Python stderr: ${data}`);
-    });
-  }
-
-  _sendToPython(payload) {
-    if (this._pyProcess && this._pyProcess.stdin) {
-      this._pyProcess.stdin.write(JSON.stringify(payload) + '\n');
-    }
-  }
-
-  _getHtml() {
-    const initialSessionId = crypto.randomUUID();
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 10px; display: flex; flex-direction: column; height: 95vh; margin: 0; }
-  .controls { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-panel-border); }
-  .row { display: flex; gap: 6px; align-items: center; }
-  select, button, textarea { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 5px; border-radius: 3px; font-family: inherit; }
-  select { flex: 1; }
-  button { cursor: pointer; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 10px; }
-  button:hover { background: var(--vscode-button-hoverBackground); }
-  #ssoBanner { display: none; background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); padding: 8px; border-radius: 4px; margin-top: 6px; font-size: 12px; }
-  #chat { flex: 1; overflow-y: auto; padding: 10px 0; display: flex; flex-direction: column; gap: 10px; }
-  .msg { padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.4; }
-  .user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; max-width: 85%; }
-  .agent { background: var(--vscode-editor-inactiveSelectionBackground); align-self: flex-start; max-width: 90%; }
-  .error { color: var(--vscode-errorForeground); font-size: 12px; }
-  .input-box { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--vscode-panel-border); }
-  textarea { flex: 1; resize: none; height: 50px; }
-</style>
-</head>
-<body>
-  <div class="controls">
-    <div class="row">
-      <select id="profileSelect"><option>Loading profiles...</option></select>
-      <button id="refreshBtn" title="Refresh Agents">↻</button>
-    </div>
-    <div class="row">
-      <select id="agentSelect"><option>Select profile first...</option></select>
-      <button id="newChatBtn" title="New Session">+</button>
-    </div>
-    <div id="ssoBanner">
-      <span>SSO token expired for this profile.</span>
-      <button id="ssoLoginBtn" style="margin-top:5px; width:100%;">Run aws sso login</button>
-    </div>
-  </div>
-
-  <div id="chat"></div>
-
-  <div class="input-box">
-    <textarea id="promptInput" placeholder="Message selected agent... (Enter to send)"></textarea>
-    <button id="sendBtn">Send</button>
-  </div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-    let sessionId = "${initialSessionId}";
-    let currentAgentBubble = null;
-
-    const profileSelect = document.getElementById('profileSelect');
-    const agentSelect = document.getElementById('agentSelect');
-    const ssoBanner = document.getElementById('ssoBanner');
-    const chat = document.getElementById('chat');
-    const promptInput = document.getElementById('promptInput');
-
-    vscode.postMessage({ action: 'list_profiles' });
-
-    function loadAgents() {
-      const profile = profileSelect.value;
-      if (!profile) return;
-      ssoBanner.style.display = 'none';
-      agentSelect.innerHTML = '<option>Loading agents...</option>';
-      vscode.postMessage({ action: 'list_agents', profile });
-    }
-
-    profileSelect.addEventListener('change', loadAgents);
-    document.getElementById('refreshBtn').addEventListener('click', loadAgents);
-    document.getElementById('ssoLoginBtn').addEventListener('click', () => {
-      vscode.postMessage({ type: 'ssoLogin', profile: profileSelect.value });
-    });
-    document.getElementById('newChatBtn').addEventListener('click', () => {
-      vscode.postMessage({ type: 'newSession' });
-    });
-
-    function sendMessage() {
-      const prompt = promptInput.value.trim();
-      const agentArn = agentSelect.value;
-      const profile = profileSelect.value;
-      if (!prompt || !agentArn) return;
-
-      appendMsg(prompt, 'user');
-      promptInput.value = '';
-      currentAgentBubble = appendMsg('...', 'agent');
-
-      vscode.postMessage({
-        action: 'invoke_agent',
-        profile,
-        agentArn,
-        prompt,
-        sessionId
-      });
-    }
-
-    document.getElementById('sendBtn').addEventListener('click', sendMessage);
-    promptInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
-    function appendMsg(text, cls) {
-      const div = document.createElement('div');
-      div.className = 'msg ' + cls;
-      div.textContent = text;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-      return div;
-    }
-
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'profiles') {
-        profileSelect.innerHTML = msg.data.map(p => \`<option value="\${p}">\${p}</option>\`).join('');
-        loadAgents();
-      } else if (msg.type === 'agents') {
-        if (!msg.data.length) {
-          agentSelect.innerHTML = '<option value="">No agents found</option>';
-        } else {
-          agentSelect.innerHTML = msg.data.map(a => \`<option value="\${a.arn}" title="\${a.description}">\${a.name}</option>\`).join('');
-        }
-      } else if (msg.type === 'sso_expired') {
-        ssoBanner.style.display = 'block';
-        agentSelect.innerHTML = '<option value="">SSO Login Required</option>';
-      } else if (msg.type === 'chunk') {
-        if (currentAgentBubble) {
-          if (currentAgentBubble.textContent === '...') currentAgentBubble.textContent = '';
-          currentAgentBubble.textContent += msg.text;
-          chat.scrollTop = chat.scrollHeight;
-        }
-      } else if (msg.type === 'done') {
-        currentAgentBubble = null;
-      } else if (msg.type === 'sessionReset') {
-        sessionId = msg.sessionId;
-        chat.innerHTML = '';
-      } else if (msg.type === 'error') {
-        appendMsg('Error: ' + msg.message, 'error');
-        currentAgentBubble = null;
-      }
-    });
-  </script>
-</body>
-</html>`;
-  }
+function deactivate() {
+  bridge?.dispose();
 }
-
-function deactivate() {}
 
 module.exports = { activate, deactivate };

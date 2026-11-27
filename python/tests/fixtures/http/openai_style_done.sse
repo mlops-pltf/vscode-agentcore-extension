@@ -1,0 +1,6 @@
+data: {"delta": {"text": "Hello "}}
+
+data: {"delta": {"text": "world!"}}
+
+data: [DONE]
+
